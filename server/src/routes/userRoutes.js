@@ -73,7 +73,7 @@ userRouter.get("/user/feed", auth, async (req, res) => {
         ]
 
     }).select("fromuserid touserid")
-    const hideusersfromfeed=new set();
+    const hideusersfromfeed = new Set();
     connections.forEach((req)=>{
         hideusersfromfeed.add(req.fromuserid.toString())
         hideusersfromfeed.add(req.touserid.toString())

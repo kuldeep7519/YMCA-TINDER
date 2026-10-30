@@ -12,7 +12,28 @@ dotenv.config();
 
 const app=express();
 app.use(cookieparser())
-app.use(cors())
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+];
+
+if (process.env.CLIENT_URL) {
+  allowedOrigins.push(process.env.CLIENT_URL);
+}
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile, curl, or same-origin)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Fallback to allow during deployment setup
+    },
+    credentials: true,
+  })
+);
 app.use(express.json())
 
 
