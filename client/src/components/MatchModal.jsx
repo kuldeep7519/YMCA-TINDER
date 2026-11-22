@@ -8,12 +8,11 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
 
   useEffect(() => {
     if (isOpen) {
-      // Fire confetti bursts!
       confetti({
         particleCount: 80,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ["#FF4458", "#FF6B4A", "#FFC700", "#FF1493"],
+        colors: ["#6366F1", "#A855F7", "#EC4899", "#38BDF8", "#F43F5E"],
       });
 
       const timer = setTimeout(() => {
@@ -39,9 +38,9 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
-      <div className="relative w-full max-w-md bg-gradient-to-b from-[#1E202B] to-[#12141A] rounded-3xl p-6 sm:p-8 text-center border border-white/10 shadow-2xl overflow-hidden animate-slide-up">
+      <div className="relative w-full max-w-md bg-gradient-to-b from-[#181B2D] to-[#0E101A] rounded-3xl p-6 sm:p-8 text-center border border-white/10 shadow-2xl overflow-hidden animate-slide-up">
         {/* Glow ambient background */}
-        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-64 bg-rose-500/25 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-64 bg-purple-500/25 rounded-full blur-3xl pointer-events-none" />
 
         {/* Close Button */}
         <button
@@ -53,11 +52,11 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
 
         {/* Match Header */}
         <div className="space-y-1 mb-8">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-xs font-bold text-red-400 uppercase tracking-widest mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-red-400" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-xs font-bold text-purple-300 uppercase tracking-widest mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
             New Match Found
           </div>
-          <h2 className="text-4xl sm:text-5xl font-black italic tracking-tight bg-gradient-to-r from-[#FF4458] via-rose-300 to-[#FF6B4A] bg-clip-text text-transparent drop-shadow-lg">
+          <h2 className="text-4xl sm:text-5xl font-black italic tracking-tight bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] bg-clip-text text-transparent drop-shadow-lg">
             IT'S A MATCH!
           </h2>
           <p className="text-slate-300 text-sm">
@@ -69,7 +68,7 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
         <div className="flex items-center justify-center gap-2 mb-8">
           {/* Logged in student avatar */}
           <div className="relative">
-            <div className="w-24 h-24 rounded-full ring-4 ring-[#FF4458] shadow-lg shadow-red-500/30 overflow-hidden">
+            <div className="w-24 h-24 rounded-full ring-4 ring-[#6366F1] shadow-lg shadow-purple-500/30 overflow-hidden">
               <img
                 src={loggedInUser?.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250"}
                 alt="You"
@@ -82,13 +81,13 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
           </div>
 
           {/* Floating animated Heart */}
-          <div className="w-12 h-12 -mx-3 z-10 rounded-full bg-gradient-to-tr from-[#FF4458] to-[#FF6B4A] flex items-center justify-center shadow-lg shadow-red-500/50 animate-pulse">
+          <div className="w-12 h-12 -mx-3 z-10 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] flex items-center justify-center shadow-lg shadow-purple-500/50 animate-pulse">
             <Heart className="w-6 h-6 text-white fill-white" />
           </div>
 
           {/* Matched student avatar */}
           <div className="relative">
-            <div className="w-24 h-24 rounded-full ring-4 ring-[#FF6B4A] shadow-lg shadow-orange-500/30 overflow-hidden">
+            <div className="w-24 h-24 rounded-full ring-4 ring-[#EC4899] shadow-lg shadow-pink-500/30 overflow-hidden">
               <img
                 src={matchedUser.photoUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250"}
                 alt={matchedUser.firstName}
@@ -108,7 +107,7 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
               onClose();
               navigate("/matches");
             }}
-            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#FF4458] to-[#FF6B4A] text-white font-bold text-base shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white font-bold text-base shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
             <MessageCircle className="w-5 h-5" />
             Say Hello on Campus

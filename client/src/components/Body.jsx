@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import Navbar from "./Navbar";
 import axiosClient from "../utils/axiosClient";
 import { useDispatch, useSelector } from "react-redux";
 import { addUser } from "../utils/userSlice";
-import { Heart, Flame } from "lucide-react";
+import { addNotification, setOnlineUsers } from "../utils/notificationSlice";
+import { createSocketConnection } from "../utils/socket";
+import { playNotificationSound } from "../utils/sound";
+import NotificationToast from "./NotificationToast";
+import { Heart, Flame, Download, Sparkles } from "lucide-react";
 
 const Body = () => {
   const user = useSelector((store) => store.user);
@@ -12,6 +16,9 @@ const Body = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installed, setInstalled] = useState(false);
+  const socketRef = useRef(null);
 
   const fetchProfile = async () => {
     try {
@@ -19,7 +26,6 @@ const Body = () => {
       const userData = res.data.user || res.data;
       dispatch(addUser(userData));
     } catch (err) {
-      // If unauthorized and not on login page, redirect to login
       if (location.pathname !== "/login") {
         navigate("/login");
       }
@@ -36,10 +42,70 @@ const Body = () => {
     }
   }, [user]);
 
+  // Global Socket Listener for Live Unread Badges & Sound Notifications
+  useEffect(() => {
+    if (!user?._id) return;
+
+    const socket = createSocketConnection();
+    socketRef.current = socket;
+
+    // Join personal user notification channel and register presence
+    socket.emit("registerUser", user._id);
+    socket.emit("getOnlineUsers");
+
+    // Receive message notifications from any match while browsing anywhere in the app
+    socket.on("newNotification", (data) => {
+      playNotificationSound();
+      dispatch(addNotification(data));
+    });
+
+    // Real-time online users presence list
+    socket.on("onlineUsersList", (list) => {
+      dispatch(setOnlineUsers(list));
+    });
+
+    return () => {
+      socket.off("newNotification");
+      socket.off("onlineUsersList");
+      socket.disconnect();
+    };
+  }, [user?._id, dispatch]);
+
+  // PWA Install Prompt Listener
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      setInstalled(true);
+    }
+    setDeferredPrompt(null);
+  };
+
   if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-[#0F1117] flex flex-col items-center justify-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#FF4458] to-[#FF6B4A] flex items-center justify-center shadow-xl shadow-red-500/30 animate-pulse">
+      <div className="min-h-screen bg-[#07080E] flex flex-col items-center justify-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] flex items-center justify-center shadow-xl shadow-purple-500/30 animate-pulse">
           <Flame className="w-8 h-8 text-white fill-white" />
         </div>
         <p className="text-slate-400 font-semibold text-sm">
@@ -50,7 +116,10 @@ const Body = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F1117] flex flex-col justify-between selection:bg-[#FF4458] selection:text-white">
+    <div className="min-h-screen bg-[#07080E] flex flex-col justify-between selection:bg-[#A855F7] selection:text-white relative">
+      {/* Real-time incoming chat toast banner */}
+      <NotificationToast />
+
       <div>
         <Navbar />
         <main>
@@ -59,15 +128,27 @@ const Body = () => {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-6 px-4 text-center mt-12 bg-[#0C0E14]">
+      <footer className="border-t border-white/5 py-6 px-4 text-center mt-12 bg-[#06070B]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#FF4458] fill-[#FF4458]" />
-            <span className="font-bold text-slate-400">YMCA Match</span>
+            <Flame className="w-4 h-4 text-[#A855F7] fill-[#A855F7]" />
+            <span className="font-bold text-slate-300">YMCA Match</span>
             <span>— The Official JC Bose UST Dating & Campus Network</span>
           </div>
+
+          {/* PWA Install Button */}
+          {deferredPrompt && !installed && (
+            <button
+              onClick={handleInstallApp}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold text-xs transition-all shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Add YMCA Match to Home Screen
+            </button>
+          )}
+
           <p className="flex items-center gap-1">
-            Made with <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" /> for YMCA Students
+            Made with <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" /> for JC Bose UST Students
           </p>
         </div>
       </footer>

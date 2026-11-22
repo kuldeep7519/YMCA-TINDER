@@ -9,18 +9,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        ymca: {
-          crimson: "#FF4458",
-          orange: "#FF6B4A",
-          dark: "#0F1117",
-          card: "#181A20",
-          border: "#262933",
+        brand: {
+          violet: "#6366F1",
+          purple: "#A855F7",
+          pink: "#EC4899",
+          rose: "#F43F5E",
+          cyan: "#06B6D4",
+          dark: "#07080E",
+          card: "#111422",
+          border: "#1E2235",
         }
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade-in': 'fadeIn 0.3s ease-in-out',
-        'slide-up': 'slideUp 0.4s ease-out',
+        'fade-in': 'fadeIn 0.25s ease-in-out',
+        'slide-up': 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+        'glow': 'glow 2s ease-in-out infinite alternate',
       },
       keyframes: {
         fadeIn: {
@@ -28,8 +32,12 @@ export default {
           '100%': { opacity: '1' },
         },
         slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '0%': { transform: 'translateY(16px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        glow: {
+          '0%': { boxShadow: '0 0 15px -3px rgba(168, 85, 247, 0.3)' },
+          '100%': { boxShadow: '0 0 30px 2px rgba(236, 72, 153, 0.45)' },
         }
       }
     },
@@ -39,17 +47,17 @@ export default {
     themes: [
       {
         ymcatinder: {
-          "primary": "#FF4458",
-          "secondary": "#FF6B4A",
-          "accent": "#F5385D",
-          "neutral": "#181A20",
-          "base-100": "#0F1117",
-          "base-200": "#16181F",
-          "base-300": "#21242D",
-          "info": "#3ABFF8",
-          "success": "#36D399",
-          "warning": "#FBBD23",
-          "error": "#F87272",
+          "primary": "#A855F7",
+          "secondary": "#EC4899",
+          "accent": "#6366F1",
+          "neutral": "#111422",
+          "base-100": "#07080E",
+          "base-200": "#0E101A",
+          "base-300": "#171A2B",
+          "info": "#06B6D4",
+          "success": "#10B981",
+          "warning": "#F59E0B",
+          "error": "#F43F5E",
         },
       },
       "dark",
