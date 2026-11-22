@@ -1,10 +1,12 @@
 import { io } from "socket.io-client";
-import { BASE_URL } from "./constants";
 
 export const createSocketConnection = () => {
+  // On localhost connect directly to port 7777; in production connect to current origin root namespace
   const socketUrl =
-    BASE_URL ||
-    (typeof window !== "undefined" ? window.location.origin : "http://localhost:7777");
+    typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "http://localhost:7777"
+      : "/";
+
   return io(socketUrl, {
     withCredentials: true,
   });
