@@ -2,7 +2,7 @@ export const BASE_URL =
   import.meta.env.VITE_BACKEND_URL ||
   (typeof window !== "undefined" && window.location.hostname === "localhost"
     ? "http://localhost:7777"
-    : "");
+    : "/api");
 
 export const YMCA_BRANCHES = [
   "Computer Engineering (CE)",
