@@ -3,6 +3,7 @@ import axiosClient from "../utils/axiosClient";
 import { useDispatch } from "react-redux";
 import { addUser } from "../utils/userSlice";
 import { useNavigate } from "react-router-dom";
+import { compressImage } from "../utils/imageCompressor";
 import {
   Flame,
   Sparkles,
@@ -22,20 +23,76 @@ import {
 } from "lucide-react";
 import { YMCA_BRANCHES, YEARS, INTEREST_TAGS } from "../utils/constants";
 
+export const BG_THEMES = {
+  midnight: {
+    id: "midnight",
+    name: "Midnight Campus",
+    icon: "🌌",
+    tagline: "Cosmic JC Bose UST Night",
+    orb1: "bg-purple-600/30",
+    orb2: "bg-indigo-600/25",
+    orb3: "bg-pink-600/20",
+    glowColor: "rgba(168, 85, 247, 0.4)",
+    cardBorder: "border-purple-500/25",
+    badgeBg: "bg-purple-500/10 text-purple-300 border-purple-500/30",
+  },
+  romance: {
+    id: "romance",
+    name: "Sunset Romance",
+    icon: "💖",
+    tagline: "Romantic Sunset Dating Vibe",
+    orb1: "bg-rose-500/30",
+    orb2: "bg-pink-600/25",
+    orb3: "bg-amber-500/20",
+    glowColor: "rgba(236, 72, 153, 0.4)",
+    cardBorder: "border-pink-500/25",
+    badgeBg: "bg-pink-500/10 text-pink-300 border-pink-500/30",
+  },
+  cyber: {
+    id: "cyber",
+    name: "Cyber Neon",
+    icon: "⚡",
+    tagline: "Electric Tech & Campus Coders",
+    orb1: "bg-cyan-500/30",
+    orb2: "bg-emerald-500/25",
+    orb3: "bg-violet-600/20",
+    glowColor: "rgba(6, 182, 212, 0.4)",
+    cardBorder: "border-cyan-500/25",
+    badgeBg: "bg-cyan-500/10 text-cyan-300 border-cyan-500/30",
+  },
+  canteen: {
+    id: "canteen",
+    name: "Canteen Chai",
+    icon: "☕",
+    tagline: "Maggi, Chai & Campus Charcha",
+    orb1: "bg-amber-500/30",
+    orb2: "bg-orange-600/25",
+    orb3: "bg-rose-600/20",
+    glowColor: "rgba(249, 115, 22, 0.4)",
+    cardBorder: "border-amber-500/25",
+    badgeBg: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  },
+};
+
 const Login = () => {
+  const [selectedTheme, setSelectedTheme] = useState(() => {
+    return localStorage.getItem("ymca_theme") || "midnight";
+  });
+
   const [isSignUp, setIsSignUp] = useState(false);
   const [step, setStep] = useState("form"); // "form" | "otp"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [age, setAge] = useState(20);
-  const [gender, setGender] = useState("male");
-  const [branch, setBranch] = useState(YMCA_BRANCHES[0]);
-  const [year, setYear] = useState("3rd Year (Junior)");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
+  const [branch, setBranch] = useState("");
+  const [year, setYear] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
-  const [bio, setBio] = useState("Proud JC Bose UST student! Let's grab some Maggi at canteen.");
-  const [interest, setInterest] = useState(["💻 Coding", "☕ Chai Pe Charcha", "🏸 Badminton"]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [bio, setBio] = useState("");
+  const [interest, setInterest] = useState([]);
 
   // 6-digit OTP states (Signup)
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -92,6 +149,17 @@ const Login = () => {
     return () => clearInterval(interval);
   }, [step, forgotTimer]);
 
+  const handleThemeChange = (themeId) => {
+    setSelectedTheme(themeId);
+    try {
+      localStorage.setItem("ymca_theme", themeId);
+    } catch (e) {
+      // Ignore storage errors in private browsing
+    }
+  };
+
+  const currentTheme = BG_THEMES[selectedTheme] || BG_THEMES.midnight;
+
   const handleDevicePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -105,21 +173,41 @@ const Login = () => {
       setUploadingPhoto(true);
       setError(null);
 
-      // Local preview
-      setPhotoUrl(URL.createObjectURL(file));
+      // Show immediate local preview while uploading
+      const localBlob = URL.createObjectURL(file);
+      setPreviewUrl(localBlob);
+      // Explicitly clear photoUrl so form cannot submit until cloud upload succeeds
+      setPhotoUrl("");
+
+      // Compress large phone/camera images (e.g. 5MB-10MB -> ~180KB) to prevent HTTP 413
+      const compressedFile = await compressImage(file, 1200, 0.82);
 
       const uploadData = new FormData();
-      uploadData.append("photo", file);
+      uploadData.append("photo", compressedFile);
 
       const res = await axiosClient.post("/upload", uploadData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      setPhotoUrl(res.data.photoUrl);
+      if (res.data?.photoUrl) {
+        setPhotoUrl(res.data.photoUrl);
+        setPreviewUrl(res.data.photoUrl);
+      } else {
+        throw new Error("No photo URL returned from server");
+      }
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Failed to upload photo");
+      setPhotoUrl("");
+      setPreviewUrl("");
+      const errMsg =
+        err.response?.status === 413
+          ? "Photo is too large. Please select a smaller photo."
+          : err.response?.data?.message || err.message || "Failed to upload photo";
+      setError(errMsg);
     } finally {
       setUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -137,13 +225,38 @@ const Login = () => {
     setError(null);
     setInfoMessage(null);
 
-    if (!photoUrl) {
+    if (uploadingPhoto) {
+      setError("Please wait for your photo to finish uploading.");
+      return;
+    }
+
+    if (!photoUrl || photoUrl.startsWith("blob:")) {
       setError("Profile photo is compulsory! Please upload a photo of yourself from your phone or laptop.");
       return;
     }
 
-    if (!email || !password || !firstName) {
-      setError("Please fill out all required fields.");
+    if (!firstName || !firstName.trim() || !email || !password) {
+      setError("Please fill out your name, email, and password.");
+      return;
+    }
+
+    if (!age || Number(age) < 18 || Number(age) > 60) {
+      setError("Please enter your age (must be between 18 and 60).");
+      return;
+    }
+
+    if (!gender) {
+      setError("Please select your gender.");
+      return;
+    }
+
+    if (!branch) {
+      setError("Please select your JC Bose UST department/branch.");
+      return;
+    }
+
+    if (!year) {
+      setError("Please select your academic year.");
       return;
     }
 
@@ -238,13 +351,23 @@ const Login = () => {
       return;
     }
 
+    if (uploadingPhoto) {
+      setError("Please wait for your photo to finish uploading.");
+      return;
+    }
+
+    if (!photoUrl || photoUrl.startsWith("blob:")) {
+      setError("Valid profile photo is required. Please go back and re-upload your photo.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
       const signupPayload = {
-        firstName,
-        lastName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         email: email.trim(),
         password,
         age: Number(age),
@@ -252,7 +375,7 @@ const Login = () => {
         branch,
         year,
         photoUrl,
-        bio,
+        bio: bio.trim() || "Proud JC Bose UST student!",
         interest,
         otp: enteredOtp,
       };
@@ -416,11 +539,79 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 py-10 relative">
-      {/* Background glowing orb */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 rounded-full blur-[110px] pointer-events-none" />
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 py-10 relative overflow-hidden">
+      {/* Dynamic Themed Ambient Background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        {/* Subtle Ambient Grid */}
+        <div className="absolute inset-0 bg-grid-cyber opacity-70" />
 
-      <div className="w-full max-w-xl bg-[#111422]/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10 animate-fade-in">
+        {/* Ambient Gradient Glow Orbs */}
+        <div
+          className={`absolute -top-24 -left-24 w-96 sm:w-[32rem] h-96 sm:h-[32rem] ${currentTheme.orb1} rounded-full blur-[130px] animate-pulse-slow transition-all duration-700`}
+        />
+        <div
+          className={`absolute top-1/3 -right-24 w-80 sm:w-[28rem] h-80 sm:h-[28rem] ${currentTheme.orb2} rounded-full blur-[140px] animate-pulse-slow transition-all duration-700`}
+        />
+        <div
+          className={`absolute -bottom-24 left-1/4 w-96 sm:w-[30rem] h-96 sm:h-[30rem] ${currentTheme.orb3} rounded-full blur-[130px] transition-all duration-700`}
+        />
+
+        {/* Ambient Floating Campus Badges */}
+        <div className="hidden lg:block select-none pointer-events-none">
+          <div className="absolute top-[16%] left-[7%] animate-float-slow opacity-25 text-3xl">
+            🎓
+          </div>
+          <div className="absolute top-[26%] right-[8%] animate-float-reverse opacity-30 text-3xl">
+            🔥
+          </div>
+          <div className="absolute bottom-[24%] left-[10%] animate-float-reverse opacity-25 text-3xl">
+            ☕
+          </div>
+          <div className="absolute bottom-[18%] right-[9%] animate-float-slow opacity-30 text-3xl">
+            💖
+          </div>
+          <div className="absolute top-[68%] left-[5%] animate-float-slow opacity-20 text-2xl">
+            🏸
+          </div>
+          <div className="absolute top-[12%] right-[20%] animate-float-reverse opacity-25 text-2xl">
+            ✨
+          </div>
+          <div className="absolute bottom-[40%] right-[6%] animate-float-slow opacity-20 text-2xl">
+            💬
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`w-full max-w-xl bg-[#111422]/95 backdrop-blur-xl border ${currentTheme.cardBorder} rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10 animate-fade-in transition-all duration-500`}
+      >
+        {/* Background Theme Switcher */}
+        <div className="flex items-center justify-between mb-6 pb-3 border-b border-white/5">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span className="font-semibold text-slate-300">Theme</span>
+            <span className="hidden sm:inline text-[11px] text-slate-500">• {currentTheme.tagline}</span>
+          </div>
+
+          <div className="flex items-center gap-1 bg-[#0E101A] p-1 rounded-xl border border-white/10">
+            {Object.values(BG_THEMES).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleThemeChange(t.id)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  selectedTheme === t.id
+                    ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+                title={t.name}
+              >
+                <span>{t.icon}</span>
+                <span className="hidden sm:inline text-[11px]">{t.name.split(" ")[0]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         {/* Header */}
         <div className="text-center space-y-2 mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-lg shadow-purple-500/25 mb-1">
@@ -618,7 +809,8 @@ const Login = () => {
                 <input
                   type="email"
                   required
-                  placeholder="yourname@gmail.com"
+                  placeholder=""
+                  autoComplete="off"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   className="w-full bg-[#171A2B] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -727,7 +919,8 @@ const Login = () => {
                     type="password"
                     required
                     minLength={6}
-                    placeholder="New secure password"
+                    placeholder=""
+                    autoComplete="new-password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full bg-[#171A2B] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -743,7 +936,8 @@ const Login = () => {
                     type="password"
                     required
                     minLength={6}
-                    placeholder="Re-enter new password"
+                    placeholder=""
+                    autoComplete="new-password"
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                     className="w-full bg-[#171A2B] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -825,9 +1019,32 @@ const Login = () => {
                     />
                   </div>
 
-                  {photoUrl && (
+                  {uploadingPhoto && (
                     <div className="flex items-center gap-3 pt-2 border-t border-white/5">
-                      <div className="w-14 h-14 rounded-xl overflow-hidden ring-2 ring-purple-500/40 flex-shrink-0">
+                      <div className="w-14 h-14 rounded-xl overflow-hidden ring-2 ring-purple-500/40 flex-shrink-0 relative bg-black/40 flex items-center justify-center">
+                        {previewUrl && (
+                          <img
+                            src={previewUrl}
+                            alt="Uploading preview"
+                            className="w-full h-full object-cover opacity-40"
+                          />
+                        )}
+                        <span className="loading loading-spinner loading-sm text-purple-400 absolute"></span>
+                      </div>
+                      <div className="text-xs text-slate-300">
+                        <p className="text-purple-400 font-semibold flex items-center gap-1">
+                          Optimizing & uploading photo...
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Compressing image and uploading to cloud storage
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!uploadingPhoto && photoUrl && (
+                    <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                      <div className="w-14 h-14 rounded-xl overflow-hidden ring-2 ring-emerald-500/50 flex-shrink-0">
                         <img
                           src={photoUrl}
                           alt="Uploaded preview"
@@ -849,11 +1066,12 @@ const Login = () => {
                 {/* Names */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">First Name</label>
+                    <label className="text-xs font-semibold text-slate-300">First Name *</label>
                     <input
                       type="text"
                       required
                       placeholder=""
+                      autoComplete="off"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -864,6 +1082,7 @@ const Login = () => {
                     <input
                       type="text"
                       placeholder=""
+                      autoComplete="off"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -874,24 +1093,29 @@ const Login = () => {
                 {/* Age & Gender */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Age</label>
+                    <label className="text-xs font-semibold text-slate-300">Age *</label>
                     <input
                       type="number"
                       min="18"
                       max="60"
                       required
+                      placeholder=""
                       value={age}
                       onChange={(e) => setAge(e.target.value)}
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Gender</label>
+                    <label className="text-xs font-semibold text-slate-300">Gender *</label>
                     <select
                       value={gender}
                       onChange={(e) => setGender(e.target.value)}
+                      required
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
                     >
+                      <option value="" disabled className="text-slate-500">
+                        Select Gender
+                      </option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
                       <option value="others">Others</option>
@@ -904,13 +1128,17 @@ const Login = () => {
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
                       <GraduationCap className="w-3.5 h-3.5 text-[#EC4899]" />
-                      JC Bose UST Branch
+                      JC Bose UST Branch *
                     </label>
                     <select
                       value={branch}
                       onChange={(e) => setBranch(e.target.value)}
+                      required
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors"
                     >
+                      <option value="" disabled className="text-slate-500">
+                        Select JC Bose UST Branch
+                      </option>
                       {YMCA_BRANCHES.map((b) => (
                         <option key={b} value={b}>
                           {b}
@@ -922,13 +1150,17 @@ const Login = () => {
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
                       <BookOpen className="w-3.5 h-3.5 text-pink-400" />
-                      Academic Year
+                      Academic Year *
                     </label>
                     <select
                       value={year}
                       onChange={(e) => setYear(e.target.value)}
+                      required
                       className="w-full bg-[#171A2B] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors"
                     >
+                      <option value="" disabled className="text-slate-500">
+                        Select Academic Year
+                      </option>
                       {YEARS.map((y) => (
                         <option key={y} value={y}>
                           {y}
@@ -945,16 +1177,27 @@ const Login = () => {
                     rows={2}
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
-                    placeholder="Tell campus who you are, your hobbies, favorite canteen dish..."
+                    placeholder=""
                     className="w-full bg-[#171A2B] border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors resize-none"
                   />
                 </div>
 
                 {/* Interests Picker */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Select Interests & Hobbies ({interest.length} picked)
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Select Interests & Hobbies ({interest.length} picked)
+                    </label>
+                    {interest.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInterest([])}
+                        className="text-[10px] text-purple-400 hover:underline"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
                     {INTEREST_TAGS.map((tag) => {
                       const selected = interest.includes(tag);
@@ -988,7 +1231,8 @@ const Login = () => {
                 <input
                   type="email"
                   required
-                  placeholder="yourname@gmail.com"
+                  placeholder=""
+                  autoComplete="off"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-[#171A2B] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -1005,7 +1249,8 @@ const Login = () => {
                   type="password"
                   required
                   minLength={6}
-                  placeholder="••••••••"
+                  placeholder=""
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-[#171A2B] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"

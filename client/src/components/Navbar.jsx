@@ -100,10 +100,18 @@ const Navbar = () => {
                   : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Sparkles className="w-4 h-4 text-[#6366F1]" />
+              <div className="relative flex items-center">
+                <Sparkles className="w-4 h-4 text-[#6366F1]" />
+                {requests && requests.length > 0 && !isActive("/requests") && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                  </span>
+                )}
+              </div>
               <span className="hidden md:inline">Requests</span>
               {requests && requests.length > 0 && (
-                <span className="badge badge-xs bg-[#A855F7] text-white font-bold px-1.5 py-2 border-0 animate-bounce">
+                <span className="badge badge-xs bg-gradient-to-r from-[#6366F1] to-[#A855F7] text-white font-bold px-1.5 py-2 border-0 shadow-sm shadow-purple-500/20">
                   {requests.length}
                 </span>
               )}

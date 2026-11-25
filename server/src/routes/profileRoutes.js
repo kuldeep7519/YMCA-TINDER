@@ -35,6 +35,10 @@ ProfileRoute.patch("/profile/edit", auth, async (req, res) => {
       return res.status(400).send("Update for one or more fields is not allowed");
     }
 
+    if (req.body.photoUrl && (req.body.photoUrl.startsWith("blob:") || !/^https?:\/\//i.test(req.body.photoUrl))) {
+      return res.status(400).send("Invalid photo URL. Please upload a valid image.");
+    }
+
     Object.keys(req.body).forEach((key) => {
       user[key] = req.body[key];
     });

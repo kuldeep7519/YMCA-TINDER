@@ -43,6 +43,16 @@ connectionRouter.post("/request/send/:status/:to_id", auth, async (req, res) => 
     });
 
     await connection.save();
+
+    // Push real-time notification to recipient if online
+    const io = req.app.get("io");
+    if (io) {
+      io.to(to_id.toString()).emit("newRequestNotification", {
+        from: loggedinuser.firstName,
+        status: status,
+      });
+    }
+
     res.status(200).json({
       message: "Request sent successfully",
     });
@@ -75,6 +85,18 @@ connectionRouter.patch("/request/review/:status/:from_id", auth, async (req, res
 
     connection.status = status;
     await connection.save();
+
+    // Push real-time notification to the sender if request was accepted
+    if (status === "accepted") {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(from_id.toString()).emit("newRequestNotification", {
+          from: loggedinuser.firstName,
+          status: "accepted",
+        });
+      }
+    }
+
     res.status(200).send(`${status} successfully`);
   } catch (err) {
     res.status(400).send(err.message);

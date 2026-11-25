@@ -5,6 +5,8 @@ import axiosClient from "../utils/axiosClient";
 import { useDispatch, useSelector } from "react-redux";
 import { addUser } from "../utils/userSlice";
 import { addNotification, setOnlineUsers } from "../utils/notificationSlice";
+import { addRequests } from "../utils/requestSlice";
+import { addConnections } from "../utils/connectionSlice";
 import { createSocketConnection } from "../utils/socket";
 import { playNotificationSound } from "../utils/sound";
 import NotificationToast from "./NotificationToast";
@@ -42,6 +44,29 @@ const Body = () => {
     }
   }, [user]);
 
+  // Fetch badge counts immediately upon authentication so navbar shows counts beforehand
+  const fetchBadgeCounts = async () => {
+    try {
+      const [reqRes, connRes] = await Promise.allSettled([
+        axiosClient.get("/user/request/recieved"),
+        axiosClient.get("/user/connection"),
+      ]);
+      if (reqRes.status === "fulfilled") {
+        dispatch(addRequests(reqRes.value.data?.data || []));
+      }
+      if (connRes.status === "fulfilled") {
+        dispatch(addConnections(connRes.value.data?.data || []));
+      }
+    } catch (e) {
+      console.error("Failed to load initial badge counts:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!user?._id) return;
+    fetchBadgeCounts();
+  }, [user?._id]);
+
   // Global Socket Listener for Live Unread Badges & Sound Notifications
   useEffect(() => {
     if (!user?._id) return;
@@ -64,9 +89,16 @@ const Body = () => {
       dispatch(setOnlineUsers(list));
     });
 
+    // Real-time notification when a new request or match is received
+    socket.on("newRequestNotification", () => {
+      playNotificationSound();
+      fetchBadgeCounts();
+    });
+
     return () => {
       socket.off("newNotification");
       socket.off("onlineUsersList");
+      socket.off("newRequestNotification");
       socket.disconnect();
     };
   }, [user?._id, dispatch]);

@@ -46,8 +46,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
+    fetch(event.request).catch(async () => {
+      const cachedResponse = await caches.match(event.request);
+      if (cachedResponse) return cachedResponse;
+      if (event.request.mode === "navigate") {
+        const indexHtml = await caches.match("/index.html");
+        if (indexHtml) return indexHtml;
+      }
+      return new Response("Offline", { status: 503, statusText: "Service Unavailable" });
     })
   );
 });

@@ -54,6 +54,11 @@ const userSchema = new mongoose.Schema(
     photoUrl: {
       type: String,
       required: [true, "Profile photo is compulsory"],
+      validate(value) {
+        if (!value || value.startsWith("blob:") || !/^https?:\/\//i.test(value)) {
+          throw new Error("Invalid profile photo URL. Please upload a real photo.");
+        }
+      },
     },
     bio: {
       type: String,

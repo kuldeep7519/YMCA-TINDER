@@ -113,9 +113,9 @@ authRouter.post("/signup", async (req, res) => {
       otp,
     } = req.body;
 
-    if (!photoUrl || !photoUrl.trim()) {
+    if (!photoUrl || !photoUrl.trim() || photoUrl.startsWith("blob:") || !/^https?:\/\//i.test(photoUrl)) {
       return res.status(400).json({
-        message: "Profile photo is compulsory! Please upload a photo of yourself.",
+        message: "Profile photo is compulsory! Please upload a valid photo of yourself.",
       });
     }
 

@@ -21,7 +21,8 @@ app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 // Initialize Socket.io real-time engine
-initializeSocket(server);
+const io = initializeSocket(server);
+app.set("io", io);
 
 app.use(cookieparser());
 

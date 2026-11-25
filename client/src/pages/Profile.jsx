@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import axiosClient from "../utils/axiosClient";
 import { addUser } from "../utils/userSlice";
 import { YMCA_BRANCHES, YEARS, INTEREST_TAGS } from "../utils/constants";
+import { compressImage } from "../utils/imageCompressor";
 import {
   Save,
   Sparkles,
@@ -83,40 +84,53 @@ const Profile = () => {
       return;
     }
 
+    const previousPhotoUrl = formData.photoUrl;
+
     try {
       setUploadingPhoto(true);
       setErrorMessage(null);
 
-      // Local preview
-      setFormData((prev) => ({
-        ...prev,
-        photoUrl: URL.createObjectURL(file),
-      }));
+      // Compress large phone/camera images (e.g. 5MB-10MB -> ~180KB) to prevent HTTP 413
+      const compressedFile = await compressImage(file, 1200, 0.82);
 
       const uploadData = new FormData();
-      uploadData.append("photo", file);
+      uploadData.append("photo", compressedFile);
 
       const res = await axiosClient.post("/upload/profile-photo", uploadData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      if (res.data?.photoUrl) {
+        setFormData((prev) => ({
+          ...prev,
+          photoUrl: res.data.photoUrl,
+        }));
+
+        if (res.data.user) {
+          dispatch(addUser(res.data.user));
+        }
+
+        setSuccessMessage("Photo successfully uploaded and saved! 📸");
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        throw new Error("No photo URL returned from server");
+      }
+    } catch (err) {
+      // Revert to previous valid photoUrl so user never gets stuck with a blob
       setFormData((prev) => ({
         ...prev,
-        photoUrl: res.data.photoUrl,
+        photoUrl: previousPhotoUrl,
       }));
-
-      if (res.data.user) {
-        dispatch(addUser(res.data.user));
-      }
-
-      setSuccessMessage("Photo successfully uploaded from your device! 📸");
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
       setErrorMessage(
-        err.response?.data?.message || err.message || "Photo upload failed"
+        err.response?.status === 413
+          ? "Photo file is too large. Please select a smaller photo."
+          : err.response?.data?.message || err.message || "Photo upload failed"
       );
     } finally {
       setUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -142,6 +156,17 @@ const Profile = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+
+    if (uploadingPhoto) {
+      setErrorMessage("Please wait for your photo to finish uploading.");
+      return;
+    }
+
+    if (formData.photoUrl && formData.photoUrl.startsWith("blob:")) {
+      setErrorMessage("Photo upload is invalid or still in progress. Please re-upload.");
+      return;
+    }
+
     setLoading(true);
     setSuccessMessage(null);
     setErrorMessage(null);
@@ -277,7 +302,17 @@ const Profile = () => {
                 />
               </div>
 
-              {formData.photoUrl && (
+              {uploadingPhoto ? (
+                <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                  <div className="w-12 h-12 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center">
+                    <span className="loading loading-spinner loading-sm text-red-400"></span>
+                  </div>
+                  <div className="text-xs text-slate-300">
+                    <p className="text-red-400 font-semibold">Compressing & uploading photo...</p>
+                    <p className="text-[11px] text-slate-400">Updating photo in cloud storage</p>
+                  </div>
+                </div>
+              ) : formData.photoUrl && (
                 <div className="flex items-center gap-3 pt-2 border-t border-white/5">
                   <div className="w-12 h-12 rounded-xl overflow-hidden ring-2 ring-red-500/30 flex-shrink-0">
                     <img
