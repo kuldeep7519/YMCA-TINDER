@@ -7,6 +7,13 @@ import { sendVerificationEmail } from "../utils/mailer.js";
 
 const authRouter = express.Router();
 
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+
 // 1. Send 6-digit Verification OTP to Student Email
 authRouter.post("/send-otp", async (req, res) => {
   try {
@@ -177,7 +184,7 @@ authRouter.post("/signup", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.cookie("token", token, { httpOnly: true });
+    res.cookie("token", token, getCookieOptions());
 
     res.status(201).json({
       message: "Signup successful!",
@@ -194,6 +201,7 @@ authRouter.post("/signup", async (req, res) => {
         photoUrl: user.photoUrl,
         bio: user.bio,
         interest: user.interest,
+        role: user.role || (user.email === "kuldeeprao9812@gmail.com" ? "admin" : "user"),
         isEmailVerified: user.isEmailVerified,
       },
     });
@@ -233,12 +241,20 @@ authRouter.post("/login", async (req, res) => {
       });
     }
 
+    if (existinguser.isBanned) {
+      return res.status(403).json({
+        message:
+          "Your account has been suspended by campus moderation. " +
+          (existinguser.banReason ? `Reason: ${existinguser.banReason}` : "Contact campus safety."),
+      });
+    }
+
     const token = jwt.sign(
       { _id: existinguser._id },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-    res.cookie("token", token, { httpOnly: true });
+    res.cookie("token", token, getCookieOptions());
 
     res.status(200).json({
       message: "Login successful!",
@@ -255,6 +271,7 @@ authRouter.post("/login", async (req, res) => {
         photoUrl: existinguser.photoUrl,
         bio: existinguser.bio,
         interest: existinguser.interest,
+        role: existinguser.role || (existinguser.email === "kuldeeprao9812@gmail.com" ? "admin" : "user"),
         isEmailVerified: existinguser.isEmailVerified,
       },
     });

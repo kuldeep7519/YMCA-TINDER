@@ -9,6 +9,7 @@ import Profile from "./pages/Profile";
 import Connections from "./pages/Connections";
 import Requests from "./pages/Requests";
 import Chat from "./pages/Chat";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
             <Route path="chat/:targetUserId" element={<Chat />} />
             <Route path="requests" element={<Requests />} />
           </Route>
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </BrowserRouter>
     </Provider>

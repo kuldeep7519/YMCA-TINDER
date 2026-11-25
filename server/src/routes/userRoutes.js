@@ -59,16 +59,19 @@ userRouter.get("/user/connection", auth, async (req, res) => {
   try {
     const loggedinuser = req.user;
 
-    // Find all blocked user IDs
+    // Find all blocked user IDs involving logged-in user
     const blocks = await Block.find({
       $or: [{ userId: loggedinuser._id }, { blockedUserId: loggedinuser._id }],
     });
-    const blockedIds = new Set(
-      blocks.map((b) =>
-        b.userId.toString() === loggedinuser._id.toString()
-          ? b.blockedUserId.toString()
-          : b.userId.toString()
-      )
+    const myBlockedIds = new Set(
+      blocks
+        .filter((b) => b.userId.toString() === loggedinuser._id.toString())
+        .map((b) => b.blockedUserId.toString())
+    );
+    const theirBlockedIds = new Set(
+      blocks
+        .filter((b) => b.blockedUserId.toString() === loggedinuser._id.toString())
+        .map((b) => b.userId.toString())
     );
 
     const connections = await connectionModel
@@ -105,12 +108,17 @@ userRouter.get("/user/connection", auth, async (req, res) => {
     const data = connections
       .map((connection) => {
         if (!connection.fromuserid || !connection.touserid) return null;
-        if (connection.fromuserid._id.toString() === loggedinuser._id.toString()) {
-          return connection.touserid;
-        }
-        return connection.fromuserid;
+        const target =
+          connection.fromuserid._id.toString() === loggedinuser._id.toString()
+            ? connection.touserid
+            : connection.fromuserid;
+
+        const targetObj = target.toObject ? target.toObject() : { ...target };
+        targetObj.isBlockedByMe = myBlockedIds.has(target._id.toString());
+        targetObj.isBlockedByThem = theirBlockedIds.has(target._id.toString());
+        return targetObj;
       })
-      .filter((user) => user && !blockedIds.has(user._id.toString()));
+      .filter(Boolean);
 
     res.status(200).json({
       data,
@@ -192,12 +200,16 @@ userRouter.get("/user/feed", auth, async (req, res) => {
 });
 
 // 4. Block a User (Safety Feature)
-userRouter.post("/user/block/:targetUserId", auth, async (req, res) => {
+userRouter.post(["/user/block/:targetUserId", "/user/block"], auth, async (req, res) => {
   try {
     const loggedinuser = req.user;
-    const { targetUserId } = req.params;
+    const targetUserId = req.params.targetUserId || req.body.targetUserId;
 
-    if (loggedinuser._id.toString() === targetUserId) {
+    if (!targetUserId) {
+      return res.status(400).json({ message: "targetUserId is required" });
+    }
+
+    if (loggedinuser._id.toString() === targetUserId.toString()) {
       return res.status(400).json({ message: "You cannot block yourself" });
     }
 
@@ -207,26 +219,45 @@ userRouter.post("/user/block/:targetUserId", auth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Save block
+    // Save block in DB
     await Block.findOneAndUpdate(
       { userId: loggedinuser._id, blockedUserId: targetUserId },
       { userId: loggedinuser._id, blockedUserId: targetUserId },
       { upsert: true, new: true }
     );
 
-    // Delete any existing connection / match between them
-    await connectionModel.deleteMany({
-      $or: [
-        { fromuserid: loggedinuser._id, touserid: targetUserId },
-        { fromuserid: targetUserId, touserid: loggedinuser._id },
-      ],
-    });
-
     res.status(200).json({
-      message: `${target.firstName} has been blocked and removed from your matches.`,
+      success: true,
+      message: `${target.firstName} has been blocked.`,
+      targetUserId,
     });
   } catch (err) {
     res.status(500).json({ message: "Error blocking user: " + err.message });
+  }
+});
+
+// 5. Unblock a User
+userRouter.post(["/user/unblock/:targetUserId", "/user/unblock"], auth, async (req, res) => {
+  try {
+    const loggedinuser = req.user;
+    const targetUserId = req.params.targetUserId || req.body.targetUserId;
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "targetUserId is required" });
+    }
+
+    await Block.findOneAndDelete({
+      userId: loggedinuser._id,
+      blockedUserId: targetUserId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "User unblocked successfully.",
+      targetUserId,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Error unblocking user: " + err.message });
   }
 });
 

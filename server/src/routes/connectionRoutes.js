@@ -104,25 +104,34 @@ connectionRouter.patch("/request/review/:status/:from_id", auth, async (req, res
 });
 
 // Unmatch two connected students
-connectionRouter.post("/request/unmatch/:targetUserId", auth, async (req, res) => {
-  try {
-    const loggedinuser = req.user;
-    const { targetUserId } = req.params;
+connectionRouter.post(
+  ["/request/unmatch/:targetUserId", "/user/unmatch/:targetUserId", "/user/unmatch"],
+  auth,
+  async (req, res) => {
+    try {
+      const loggedinuser = req.user;
+      const targetUserId = req.params.targetUserId || req.body.targetUserId;
 
-    await connectionModel.deleteMany({
-      $or: [
-        { fromuserid: loggedinuser._id, touserid: targetUserId },
-        { fromuserid: targetUserId, touserid: loggedinuser._id },
-      ],
-    });
+      if (!targetUserId) {
+        return res.status(400).json({ success: false, message: "targetUserId is required" });
+      }
 
-    res.status(200).json({
-      success: true,
-      message: "Unmatched successfully. Removed from your connections.",
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Error unmatching: " + err.message });
+      await connectionModel.deleteMany({
+        $or: [
+          { fromuserid: loggedinuser._id, touserid: targetUserId },
+          { fromuserid: targetUserId, touserid: loggedinuser._id },
+        ],
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Unmatched successfully. Removed from your connections.",
+        targetUserId,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Error unmatching: " + err.message });
+    }
   }
-});
+);
 
 export default connectionRouter;

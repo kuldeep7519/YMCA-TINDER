@@ -16,6 +16,31 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    replyTo: {
+      messageId: {
+        type: mongoose.Schema.Types.ObjectId,
+      },
+      text: {
+        type: String,
+        trim: true,
+      },
+      senderName: {
+        type: String,
+        trim: true,
+      },
+    },
+    reactions: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        emoji: {
+          type: String,
+          trim: true,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -32,6 +57,11 @@ const chatSchema = new mongoose.Schema(
       },
     ],
     messages: [messageSchema],
+    theme: {
+      type: String,
+      default: "classic",
+      trim: true,
+    },
   },
   {
     timestamps: true,

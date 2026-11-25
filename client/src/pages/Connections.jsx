@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import axiosClient from "../utils/axiosClient";
-import { addConnections, removeConnection } from "../utils/connectionSlice";
+import { addConnections, removeConnection, updateConnection } from "../utils/connectionSlice";
 import { clearUnreadCount } from "../utils/notificationSlice";
 import ReportModal from "../components/ReportModal";
 import {
@@ -11,6 +11,7 @@ import {
   Sparkles,
   MoreVertical,
   Ban,
+  UserCheck,
   ShieldAlert,
   UserX,
   Search,
@@ -36,6 +37,18 @@ const Connections = () => {
   const [blockingUser, setBlockingUser] = useState(null);
   const [unmatchingUser, setUnmatchingUser] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [activeDropdownId, setActiveDropdownId] = useState(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (activeDropdownId && !e.target.closest(".match-action-dropdown")) {
+        setActiveDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [activeDropdownId]);
 
   // Fetch all matches
   const getConnections = async () => {
@@ -64,11 +77,27 @@ const Connections = () => {
 
     try {
       await axiosClient.post("/user/block", { targetUserId: target._id });
-      dispatch(removeConnection(target._id));
-      setToastMessage(`Blocked ${target.firstName}. Removed from matches.`);
+      dispatch(updateConnection({ id: target._id, data: { isBlockedByMe: true } }));
+      setToastMessage(`Blocked ${target.firstName}. Tap their chat to unblock anytime.`);
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
       console.error("Failed to block user:", err);
+      setToastMessage("Failed to block user.");
+      setTimeout(() => setToastMessage(null), 3500);
+    }
+  };
+
+  // Unblock a match
+  const handleUnblock = async (target) => {
+    try {
+      await axiosClient.post("/user/unblock", { targetUserId: target._id });
+      dispatch(updateConnection({ id: target._id, data: { isBlockedByMe: false } }));
+      setToastMessage(`Unblocked ${target.firstName}.`);
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (err) {
+      console.error("Failed to unblock user:", err);
+      setToastMessage("Failed to unblock user.");
+      setTimeout(() => setToastMessage(null), 3500);
     }
   };
 
@@ -290,19 +319,21 @@ const Connections = () => {
           </div>
 
           {/* Conversation List (Instagram Style) */}
-          <div className="bg-[#111422] border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden shadow-xl">
+          <div className="bg-[#111422] border border-white/10 rounded-2xl divide-y divide-white/5 shadow-xl">
             {filteredConnections.length === 0 ? (
               <div className="text-center py-12 text-slate-500 text-xs">
                 No chats found matching "{searchQuery}"
               </div>
             ) : (
-              filteredConnections.map((match) => {
+              filteredConnections.map((match, index) => {
                 const isOnline = isUserOnline(match._id);
+                const isNearBottom = index >= Math.max(1, filteredConnections.length - 2);
+
                 return (
                   <div
                     key={match._id}
                     onClick={() => navigate(`/chat/${match._id}`)}
-                    className="p-3.5 sm:p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-white/5 transition-all group"
+                    className="p-3.5 sm:p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-white/5 transition-all group first:rounded-t-2xl last:rounded-b-2xl"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       {/* Avatar */}
@@ -333,11 +364,15 @@ const Connections = () => {
                           <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-purple-300 transition-colors truncate">
                             {match.firstName} {match.lastName}
                           </h4>
-                          {isOnline && (
+                          {match.isBlockedByMe ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold">
+                              Blocked
+                            </span>
+                          ) : isOnline ? (
                             <span className="text-[10px] text-emerald-400 font-semibold hidden sm:inline">
                               Active
                             </span>
-                          )}
+                          ) : null}
                         </div>
 
                         <p className="text-xs text-purple-300/80 font-medium truncate flex items-center gap-1 mt-0.5">
@@ -365,45 +400,75 @@ const Connections = () => {
                         <MessageCircle className="w-4 h-4 text-[#A855F7]" />
                       </button>
 
-                      <div className="dropdown dropdown-end">
-                        <label
-                          tabIndex={0}
+                      <div className="relative match-action-dropdown">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveDropdownId(activeDropdownId === match._id ? null : match._id)
+                          }
                           className="w-8 h-8 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                          title="Options"
                         >
                           <MoreVertical className="w-4 h-4" />
-                        </label>
-                        <ul
-                          tabIndex={0}
-                          className="dropdown-content z-30 menu p-1.5 shadow-2xl bg-[#171A2B] border border-white/10 rounded-2xl w-40 text-xs space-y-1"
-                        >
-                          <li>
+                        </button>
+
+                        {activeDropdownId === match._id && (
+                          <div
+                            className={`absolute right-0 ${
+                              isNearBottom ? "bottom-full mb-2" : "top-full mt-2"
+                            } z-50 w-44 bg-[#171A2B] border border-white/10 rounded-2xl p-1.5 shadow-2xl space-y-1 animate-fade-in`}
+                          >
                             <button
-                              onClick={() => setUnmatchingUser(match)}
-                              className="flex items-center gap-2 text-slate-300 hover:text-white py-1.5 rounded-xl"
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                setUnmatchingUser(match);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/5 rounded-xl transition-colors text-left"
                             >
-                              <UserX className="w-3.5 h-3.5 text-amber-400" />
-                              Unmatch
+                              <UserX className="w-4 h-4 text-amber-400" />
+                              <span>Unmatch</span>
                             </button>
-                          </li>
-                          <li>
+
+                            {match.isBlockedByMe ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownId(null);
+                                  handleUnblock(match);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-purple-400 hover:bg-purple-500/10 rounded-xl transition-colors text-left"
+                              >
+                                <UserCheck className="w-4 h-4 text-purple-400" />
+                                <span>Unblock</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownId(null);
+                                  setBlockingUser(match);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors text-left"
+                              >
+                                <Ban className="w-4 h-4 text-rose-400" />
+                                <span>Block</span>
+                              </button>
+                            )}
+
                             <button
-                              onClick={() => setBlockingUser(match)}
-                              className="flex items-center gap-2 text-rose-400 hover:bg-rose-500/10 py-1.5 rounded-xl"
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                setReportingUser(match);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors text-left"
                             >
-                              <Ban className="w-3.5 h-3.5" />
-                              Block
+                              <ShieldAlert className="w-4 h-4 text-amber-400" />
+                              <span>Report</span>
                             </button>
-                          </li>
-                          <li>
-                            <button
-                              onClick={() => setReportingUser(match)}
-                              className="flex items-center gap-2 text-amber-400 hover:bg-amber-500/10 py-1.5 rounded-xl"
-                            >
-                              <ShieldAlert className="w-3.5 h-3.5" />
-                              Report
-                            </button>
-                          </li>
-                        </ul>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -11,6 +11,7 @@ import connectionRouter from "./routes/connectionRoutes.js";
 import userRouter from "./routes/userRoutes.js";
 import chatRouter from "./routes/chatRoutes.js";
 import uploadRouter from "./routes/uploadRoutes.js";
+import adminRouter from "./routes/adminRoutes.js";
 import initializeSocket from "./utils/socket.js";
 
 dotenv.config();
@@ -30,6 +31,10 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://127.0.0.1:5173",
+  "https://ymcamatch.in",
+  "https://www.ymcamatch.in",
+  "http://ymcamatch.in",
+  "http://www.ymcamatch.in",
 ];
 
 if (process.env.CLIENT_URL) {
@@ -48,7 +53,10 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+
+// High-capacity payload limit to prevent 413 Payload Too Large on student photos
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Serve locally uploaded files statically
 app.use("/uploads", express.static(path.resolve("public/uploads")));
@@ -60,6 +68,7 @@ app.use("/", connectionRouter);
 app.use("/", userRouter);
 app.use("/", chatRouter);
 app.use("/", uploadRouter);
+app.use("/", adminRouter);
 
 // Connect DB first, then start HTTP + Socket.io server
 connectDB()

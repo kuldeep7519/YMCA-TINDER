@@ -15,6 +15,11 @@ const auth=async(req,res,next)=>{
         if(!user){
             throw new Error("user not found ")
         }
+        if (user.isBanned) {
+            return res.status(403).json({
+                message: "Your account has been suspended by campus moderation. " + (user.banReason ? `Reason: ${user.banReason}` : "Contact campus safety.")
+            });
+        }
         req.user=user;
         next();
     }catch(err){

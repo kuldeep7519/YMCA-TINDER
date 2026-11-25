@@ -104,7 +104,7 @@ const initializeSocket = (server) => {
     });
 
     // 5. Real-time message exchange, moderation check & database persistence
-    socket.on("sendMessage", async ({ userId, targetUserId, text, senderName }) => {
+    socket.on("sendMessage", async ({ userId, targetUserId, text, senderName, replyTo }) => {
       try {
         if (!userId || !targetUserId || !text || !text.trim()) return;
 
@@ -139,6 +139,8 @@ const initializeSocket = (server) => {
           senderId: userId,
           text: text.trim(),
           isRead: false,
+          replyTo: replyTo || null,
+          reactions: [],
         };
 
         chat.messages.push(newMessage);
@@ -151,6 +153,8 @@ const initializeSocket = (server) => {
           senderId: userId,
           senderName: senderName || "Student",
           text: savedMsg.text,
+          replyTo: savedMsg.replyTo || null,
+          reactions: savedMsg.reactions || [],
           isRead: false,
           createdAt: savedMsg.createdAt,
         };
@@ -162,6 +166,110 @@ const initializeSocket = (server) => {
         io.to(targetUserId.toString()).emit("newNotification", payload);
       } catch (err) {
         console.error("Socket error on sendMessage:", err);
+      }
+    });
+
+    // 6. Real-time Emoji Reactions
+    socket.on("reactMessage", async ({ roomId, messageId, userId, emoji }) => {
+      try {
+        if (!messageId || !userId || !emoji) return;
+
+        const chat = await Chat.findOne({ "messages._id": messageId });
+        if (!chat) return;
+
+        const msg = chat.messages.id(messageId);
+        if (!msg) return;
+
+        if (!msg.reactions) msg.reactions = [];
+
+        const existingIndex = msg.reactions.findIndex(
+          (r) => r.userId.toString() === userId.toString()
+        );
+
+        if (existingIndex > -1) {
+          if (msg.reactions[existingIndex].emoji === emoji) {
+            msg.reactions.splice(existingIndex, 1);
+          } else {
+            msg.reactions[existingIndex].emoji = emoji;
+          }
+        } else {
+          msg.reactions.push({ userId, emoji });
+        }
+
+        await chat.save();
+
+        io.to(roomId).emit("messageReacted", {
+          messageId,
+          reactions: msg.reactions,
+        });
+      } catch (err) {
+        console.error("Socket error on reactMessage:", err);
+      }
+    });
+
+    // 7. Unsend / Delete Message
+    socket.on("unsendMessage", async ({ roomId, messageId, userId }) => {
+      try {
+        if (!messageId || !userId) return;
+
+        const chat = await Chat.findOne({ "messages._id": messageId });
+        if (!chat) return;
+
+        const msg = chat.messages.id(messageId);
+        if (!msg) return;
+
+        // Verify sender
+        if (msg.senderId.toString() !== userId.toString()) return;
+
+        chat.messages.pull(messageId);
+        await chat.save();
+
+        io.to(roomId).emit("messageUnsent", { messageId });
+      } catch (err) {
+        console.error("Socket error on unsendMessage:", err);
+      }
+    });
+
+    // 8. Clear entire chat conversation
+    socket.on("clearChat", async ({ roomId, userId, targetUserId }) => {
+      try {
+        if (!userId || !targetUserId) return;
+
+        const chat = await Chat.findOne({
+          participants: { $all: [userId, targetUserId] },
+        });
+
+        if (chat) {
+          chat.messages = [];
+          await chat.save();
+        }
+
+        io.to(roomId).emit("chatCleared", { clearedBy: userId });
+      } catch (err) {
+        console.error("Socket error on clearChat:", err);
+      }
+    });
+
+    // 9. Real-time Chat Theme Change
+    socket.on("changeTheme", async ({ roomId, userId, targetUserId, theme, userName }) => {
+      try {
+        if (!userId || !targetUserId || !theme) return;
+
+        let chat = await Chat.findOne({
+          participants: { $all: [userId, targetUserId] },
+        });
+
+        if (chat) {
+          chat.theme = theme;
+          await chat.save();
+        }
+
+        io.to(roomId).emit("themeChanged", {
+          theme,
+          changedBy: userName || "Student",
+        });
+      } catch (err) {
+        console.error("Socket error on changeTheme:", err);
       }
     });
 

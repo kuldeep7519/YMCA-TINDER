@@ -1,7 +1,7 @@
 import React from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Flame, Heart, Sparkles, User as UserIcon, LogOut, MessageCircleHeart } from "lucide-react";
+import { Flame, Heart, Sparkles, User as UserIcon, LogOut, MessageCircleHeart, ShieldAlert } from "lucide-react";
 import axiosClient from "../utils/axiosClient";
 import { removeUser } from "../utils/userSlice";
 import { clearUnreadCount } from "../utils/notificationSlice";
@@ -162,6 +162,17 @@ const Navbar = () => {
                     Campus Matches
                   </Link>
                 </li>
+                {(user.role === "admin" || user.email === "kuldeeprao9812@gmail.com") && (
+                  <li>
+                    <Link
+                      to="/admin"
+                      className="flex items-center gap-2 py-2 hover:bg-purple-500/15 text-purple-300 font-semibold rounded-xl"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-purple-400" />
+                      Moderation HQ
+                    </Link>
+                  </li>
+                )}
                 <div className="divider my-1 before:bg-white/5 after:bg-white/5"></div>
                 <li>
                   <button
