@@ -55,6 +55,12 @@ const initializeSocket = (server) => {
       socket.join(roomId);
     });
 
+    socket.on("leaveChat", ({ userId, targetUserId }) => {
+      if (!userId || !targetUserId) return;
+      const roomId = [userId.toString(), targetUserId.toString()].sort().join("_");
+      socket.leave(roomId);
+    });
+
     // 3. Typing Indicators (Real-time)
     socket.on("typing", ({ roomId, userId, senderName }) => {
       if (!roomId) return;

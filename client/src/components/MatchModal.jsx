@@ -105,7 +105,11 @@ const MatchModal = ({ isOpen, onClose, matchedUser, loggedInUser }) => {
           <button
             onClick={() => {
               onClose();
-              navigate("/matches");
+              if (matchedUser?._id) {
+                navigate(`/chat/${matchedUser._id}`);
+              } else {
+                navigate("/matches");
+              }
             }}
             className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white font-bold text-base shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >

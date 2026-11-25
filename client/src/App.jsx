@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Connections from "./pages/Connections";
 import Requests from "./pages/Requests";
+import Chat from "./pages/Chat";
 
 function App() {
   return (
@@ -19,6 +20,8 @@ function App() {
             <Route path="login" element={<Login />} />
             <Route path="profile" element={<Profile />} />
             <Route path="matches" element={<Connections />} />
+            <Route path="matches/:targetUserId" element={<Chat />} />
+            <Route path="chat/:targetUserId" element={<Chat />} />
             <Route path="requests" element={<Requests />} />
           </Route>
         </Routes>

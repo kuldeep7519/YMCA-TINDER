@@ -66,7 +66,7 @@ const Navbar = () => {
               to="/matches"
               onClick={() => dispatch(clearUnreadCount())}
               className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${
-                isActive("/matches")
+                isActive("/matches") || location.pathname.startsWith("/chat")
                   ? "bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-white border border-purple-500/30 shadow-sm shadow-purple-500/10"
                   : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}

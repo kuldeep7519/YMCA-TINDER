@@ -23,9 +23,14 @@ const NotificationToast = () => {
   if (!toast) return null;
 
   const handleReply = () => {
+    const senderId = toast.senderId;
     dispatch(dismissToast());
     dispatch(clearUnreadCount());
-    navigate("/matches");
+    if (senderId) {
+      navigate(`/chat/${senderId}`);
+    } else {
+      navigate("/matches");
+    }
   };
 
   return (

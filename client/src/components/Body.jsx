@@ -147,43 +147,55 @@ const Body = () => {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#07080E] flex flex-col justify-between selection:bg-[#A855F7] selection:text-white relative">
-      {/* Real-time incoming chat toast banner */}
-      <NotificationToast />
+  const isChatPage =
+    location.pathname.startsWith("/chat") ||
+    location.pathname.startsWith("/matches/");
 
-      <div>
-        <Navbar />
-        <main>
+  return (
+    <div
+      className={
+        isChatPage
+          ? "h-screen bg-[#07080E] flex flex-col selection:bg-[#A855F7] selection:text-white relative overflow-hidden"
+          : "min-h-screen bg-[#07080E] flex flex-col justify-between selection:bg-[#A855F7] selection:text-white relative"
+      }
+    >
+      {/* Real-time incoming chat toast banner (only when not in chat) */}
+      {!isChatPage && <NotificationToast />}
+
+      <div className={isChatPage ? "flex-1 flex flex-col h-full overflow-hidden" : ""}>
+        {!isChatPage && <Navbar />}
+        <main className={isChatPage ? "flex-1 flex flex-col h-full overflow-hidden" : ""}>
           <Outlet />
         </main>
       </div>
 
-      {/* Footer */}
-      <footer className="border-t border-white/5 py-6 px-4 text-center mt-12 bg-[#06070B]">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#A855F7] fill-[#A855F7]" />
-            <span className="font-bold text-slate-300">YMCA Match</span>
-            <span>— The Official JC Bose UST Dating & Campus Network</span>
+      {/* Footer (hidden on chat page) */}
+      {!isChatPage && (
+        <footer className="border-t border-white/5 py-6 px-4 text-center mt-12 bg-[#06070B]">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-[#A855F7] fill-[#A855F7]" />
+              <span className="font-bold text-slate-300">YMCA Match</span>
+              <span>— The Official JC Bose UST Dating & Campus Network</span>
+            </div>
+
+            {/* PWA Install Button */}
+            {deferredPrompt && !installed && (
+              <button
+                onClick={handleInstallApp}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold text-xs transition-all shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Add YMCA Match to Home Screen
+              </button>
+            )}
+
+            <p className="flex items-center gap-1">
+              Made with <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" /> for JC Bose UST Students
+            </p>
           </div>
-
-          {/* PWA Install Button */}
-          {deferredPrompt && !installed && (
-            <button
-              onClick={handleInstallApp}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold text-xs transition-all shadow-sm"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Add YMCA Match to Home Screen
-            </button>
-          )}
-
-          <p className="flex items-center gap-1">
-            Made with <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" /> for JC Bose UST Students
-          </p>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 };
