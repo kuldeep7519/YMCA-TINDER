@@ -70,6 +70,15 @@ app.use("/", chatRouter);
 app.use("/", uploadRouter);
 app.use("/", adminRouter);
 
+// Bulletproof Crash Guards - prevents the server process from crashing on unhandled errors
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ Uncaught Exception caught by guard:", err);
+});
+
 // Connect DB first, then start HTTP + Socket.io server
 connectDB()
   .then(() => {

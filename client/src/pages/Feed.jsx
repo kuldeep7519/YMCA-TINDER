@@ -5,6 +5,7 @@ import { addFeed, removeUserFromFeed } from "../utils/feedSlice";
 import SwipeCard from "../components/SwipeCard";
 import MatchModal from "../components/MatchModal";
 import FilterModal from "../components/FilterModal";
+import TeaserFeed from "../components/TeaserFeed";
 import {
   RefreshCw,
   Sparkles,
@@ -54,10 +55,15 @@ const Feed = () => {
   };
 
   useEffect(() => {
-    if (!feed) {
+    if (loggedInUser && !feed) {
       getFeed();
     }
-  }, [feed]);
+  }, [feed, loggedInUser]);
+
+  // If visitor is unauthenticated, render the Teaser / Blurred Feed
+  if (!loggedInUser) {
+    return <TeaserFeed />;
+  }
 
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);

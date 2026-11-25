@@ -9,8 +9,22 @@ const messageSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
+      default: "",
+    },
+    messageType: {
+      type: String,
+      enum: ["text", "audio"],
+      default: "text",
+    },
+    audioUrl: {
+      type: String,
+      default: null,
+    },
+    audioDuration: {
+      type: Number,
+      default: 0,
     },
     isRead: {
       type: Boolean,
@@ -61,6 +75,14 @@ const chatSchema = new mongoose.Schema(
       type: String,
       default: "classic",
       trim: true,
+    },
+    streak: {
+      type: Number,
+      default: 0,
+    },
+    lastMessageDate: {
+      type: Date,
+      default: null,
     },
   },
   {

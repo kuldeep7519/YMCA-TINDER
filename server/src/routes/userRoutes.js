@@ -4,8 +4,100 @@ import connectionModel from "../models/connectionModel.js";
 import User from "../models/userModel.js";
 import Block from "../models/blockModel.js";
 import Report from "../models/reportModel.js";
+import Chat from "../models/chatModel.js";
 
 const userRouter = express.Router();
+
+// 0. Public Teaser Feed (Pre-Signup Curiosity & Blurred Previews)
+userRouter.get("/user/teaser-feed", async (req, res) => {
+  try {
+    const realUsers = await User.find({})
+      .select("firstName branch year age gender photoUrl bio interest")
+      .limit(8)
+      .lean();
+
+    const campusTeasers = [
+      {
+        _id: "teaser_1",
+        firstName: "Aanchal",
+        age: 20,
+        gender: "female",
+        branch: "Computer Engineering (CE)",
+        year: "3rd Year",
+        photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
+        bio: "Looking for someone to explain DSA and share Maggi at Canteen 🍜 | Culmyca dancer ✨",
+        interest: ["Coding", "NescafeChai", "Dance", "HostelLife"],
+        isCurated: true,
+      },
+      {
+        _id: "teaser_2",
+        firstName: "Rohan",
+        age: 21,
+        gender: "male",
+        branch: "Mechanical Engineering (ME)",
+        year: "4th Year",
+        photoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80",
+        bio: "Final year Mech engineer surviving on 2 hours of sleep and Nescafe cutting chai ☕",
+        interest: ["Gym", "LateNightRides", "RockMusic", "Badminton"],
+        isCurated: true,
+      },
+      {
+        _id: "teaser_3",
+        firstName: "Priya",
+        age: 19,
+        gender: "female",
+        branch: "Information Technology (IT)",
+        year: "2nd Year",
+        photoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80",
+        bio: "Always down for spontaneous road trips outside campus gate & fest prep meetings 🎸",
+        interest: ["Photography", "FestCoordinator", "Aesthetics", "Chai"],
+        isCurated: true,
+      },
+      {
+        _id: "teaser_4",
+        firstName: "Aryan",
+        age: 20,
+        gender: "male",
+        branch: "Electrical Engineering (EE)",
+        year: "3rd Year",
+        photoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80",
+        bio: "Will debug your circuit and make you laugh between back-to-back lectures ⚡",
+        interest: ["Anime", "Guitar", "Gaming", "StreetFood"],
+        isCurated: true,
+      },
+      {
+        _id: "teaser_5",
+        firstName: "Sneha",
+        age: 21,
+        gender: "female",
+        branch: "Electronics & Comm (ECE)",
+        year: "Final Year",
+        photoUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=80",
+        bio: "Hostel terrace gossip > Any Netflix series 🌙 Book lover & coffee addict",
+        interest: ["Books", "SunsetWalks", "Coffee", "Podcasts"],
+        isCurated: true,
+      },
+    ];
+
+    const combined = [...realUsers, ...campusTeasers];
+
+    const stats = {
+      totalSwiping: Math.max(52, realUsers.length * 12 + 28),
+      departments: ["Computer Engineering", "Mechanical", "Electrical", "IT", "ECE"],
+      campus: "JC Bose UST (YMCA), Faridabad",
+      activeNow: 24,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: combined,
+      stats,
+    });
+  } catch (err) {
+    console.error("Error in teaser-feed:", err);
+    res.status(500).json({ success: false, message: "Failed to load teaser feed" });
+  }
+});
 
 // 1. Pending received connection requests
 userRouter.get("/user/request/recieved", auth, async (req, res) => {
@@ -105,6 +197,20 @@ userRouter.get("/user/connection", auth, async (req, res) => {
         "interest",
       ]);
 
+    // Fetch all active chats involving logged-in user to attach streak safely
+    let streakMap = new Map();
+    try {
+      const chats = await Chat.find({ participants: loggedinuser._id }).select("participants streak");
+      chats.forEach((c) => {
+        const otherId = c.participants.find((p) => p.toString() !== loggedinuser._id.toString());
+        if (otherId) {
+          streakMap.set(otherId.toString(), c.streak || 0);
+        }
+      });
+    } catch (e) {
+      console.error("Streak lookup error (handled):", e);
+    }
+
     const data = connections
       .map((connection) => {
         if (!connection.fromuserid || !connection.touserid) return null;
@@ -116,6 +222,7 @@ userRouter.get("/user/connection", auth, async (req, res) => {
         const targetObj = target.toObject ? target.toObject() : { ...target };
         targetObj.isBlockedByMe = myBlockedIds.has(target._id.toString());
         targetObj.isBlockedByThem = theirBlockedIds.has(target._id.toString());
+        targetObj.streak = streakMap.get(target._id.toString()) || 0;
         return targetObj;
       })
       .filter(Boolean);

@@ -2,6 +2,37 @@ import { Server } from "socket.io";
 import Chat from "../models/chatModel.js";
 import Block from "../models/blockModel.js";
 
+// Safe streak update helper
+const updateChatStreak = (chat) => {
+  try {
+    const now = new Date();
+    const last = chat.lastMessageDate ? new Date(chat.lastMessageDate) : null;
+
+    if (!last) {
+      chat.streak = 1;
+      chat.lastMessageDate = now;
+      return;
+    }
+
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfLast = new Date(last.getFullYear(), last.getMonth(), last.getDate()).getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const dayDiff = Math.round((startOfToday - startOfLast) / oneDayMs);
+
+    if (dayDiff === 0) {
+      chat.lastMessageDate = now;
+    } else if (dayDiff === 1) {
+      chat.streak = (chat.streak || 0) + 1;
+      chat.lastMessageDate = now;
+    } else {
+      chat.streak = 1;
+      chat.lastMessageDate = now;
+    }
+  } catch (err) {
+    console.error("Streak calculation error (safe fallback):", err);
+  }
+};
+
 const initializeSocket = (server) => {
   const allowedOrigins = [
     "http://localhost:5173",
@@ -104,9 +135,11 @@ const initializeSocket = (server) => {
     });
 
     // 5. Real-time message exchange, moderation check & database persistence
-    socket.on("sendMessage", async ({ userId, targetUserId, text, senderName, replyTo }) => {
+    socket.on("sendMessage", async ({ userId, targetUserId, text, senderName, replyTo, messageType, audioUrl, audioDuration }) => {
       try {
-        if (!userId || !targetUserId || !text || !text.trim()) return;
+        const hasText = Boolean(text && text.trim());
+        const hasAudio = Boolean(audioUrl);
+        if (!userId || !targetUserId || (!hasText && !hasAudio)) return;
 
         // Check if either user has blocked the other
         const isBlocked = await Block.findOne({
@@ -135,9 +168,18 @@ const initializeSocket = (server) => {
           });
         }
 
+        // Update chat streak safely
+        updateChatStreak(chat);
+
+        const isAudio = messageType === "audio" || hasAudio;
+        const finalMessageText = hasText ? text.trim() : (isAudio ? "🎤 Voice note" : "");
+
         const newMessage = {
           senderId: userId,
-          text: text.trim(),
+          text: finalMessageText,
+          messageType: isAudio ? "audio" : "text",
+          audioUrl: audioUrl || null,
+          audioDuration: typeof audioDuration === "number" ? audioDuration : 0,
           isRead: false,
           replyTo: replyTo || null,
           reactions: [],
@@ -153,14 +195,19 @@ const initializeSocket = (server) => {
           senderId: userId,
           senderName: senderName || "Student",
           text: savedMsg.text,
+          messageType: savedMsg.messageType || (isAudio ? "audio" : "text"),
+          audioUrl: savedMsg.audioUrl || null,
+          audioDuration: savedMsg.audioDuration || 0,
           replyTo: savedMsg.replyTo || null,
           reactions: savedMsg.reactions || [],
           isRead: false,
           createdAt: savedMsg.createdAt,
+          streak: chat.streak,
         };
 
         // Broadcast to the chat room
         io.to(roomId).emit("messageReceived", payload);
+        io.to(roomId).emit("streakUpdated", { streak: chat.streak });
 
         // Also push live alert to recipient's personal channel (for toast notification & red badge)
         io.to(targetUserId.toString()).emit("newNotification", payload);

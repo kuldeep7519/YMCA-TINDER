@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
+import confetti from "canvas-confetti";
 import axiosClient from "../utils/axiosClient";
 import { createSocketConnection } from "../utils/socket";
 import { clearUnreadCount } from "../utils/notificationSlice";
@@ -31,6 +32,11 @@ import {
   Trash2,
   MoreVertical,
   Palette,
+  Mic,
+  Play,
+  Pause,
+  Volume2,
+  Zap,
 } from "lucide-react";
 
 const ICEBREAKERS = [
@@ -200,6 +206,203 @@ const CHAT_THEMES = {
   },
 };
 
+const formatAudioTime = (sec) => {
+  const s = Math.floor(sec || 0);
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${rem < 10 ? "0" : ""}${rem}`;
+};
+
+const VoiceNotePlayer = ({ msg, isSenderMe, currentTheme, playingAudioId, setPlayingAudioId }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [duration, setDuration] = useState(msg.audioDuration || 0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const audioRef = useRef(null);
+
+  const isCurrentPlaying = playingAudioId === msg._id;
+
+  // Pause if another audio starts playing
+  useEffect(() => {
+    if (!isCurrentPlaying && isPlaying && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    }
+  }, [isCurrentPlaying, isPlaying]);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      if (isCurrentPlaying) setPlayingAudioId(null);
+    } else {
+      setPlayingAudioId(msg._id);
+      audioRef.current.play().catch(console.error);
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setPlaybackTime(audioRef.current.currentTime);
+      if (!duration && audioRef.current.duration) {
+        setDuration(audioRef.current.duration);
+      }
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setPlaybackTime(0);
+    if (playingAudioId === msg._id) setPlayingAudioId(null);
+  };
+
+  const toggleSpeed = (e) => {
+    e.stopPropagation();
+    const rates = [1, 1.5, 2];
+    const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+    setPlaybackRate(nextRate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextRate;
+    }
+  };
+
+  const handleSeek = (index, totalBars) => {
+    if (!audioRef.current || !duration) return;
+    const targetTime = (index / totalBars) * duration;
+    audioRef.current.currentTime = targetTime;
+    setPlaybackTime(targetTime);
+  };
+
+  const progressPercent = duration ? (playbackTime / duration) * 100 : 0;
+  const waveformHeights = [
+    35, 60, 85, 45, 95, 70, 100, 50, 75, 90, 40, 65, 80, 55, 100, 75, 45, 85, 95, 60, 35, 70, 85, 50, 90, 65, 40, 80,
+  ];
+
+  return (
+    <div className="py-1 min-w-[210px] sm:min-w-[250px] space-y-2 select-none">
+      <audio
+        ref={audioRef}
+        src={msg.audioUrl}
+        preload="metadata"
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={() => {
+          if (audioRef.current?.duration) {
+            setDuration(audioRef.current.duration);
+          }
+        }}
+        onEnded={handleEnded}
+      />
+
+      <div className="flex items-center gap-3">
+        {/* Play / Pause circular button */}
+        <button
+          type="button"
+          onClick={togglePlay}
+          className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow-md ${
+            isSenderMe
+              ? "bg-white text-purple-600 hover:bg-white/90"
+              : "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90"
+          }`}
+          title={isPlaying ? "Pause" : "Play Voice Note"}
+        >
+          {isPlaying ? (
+            <Pause className="w-4 h-4 fill-current" />
+          ) : (
+            <Play className="w-4 h-4 fill-current ml-0.5" />
+          )}
+        </button>
+
+        {/* Dynamic Waveform Bars */}
+        <div className="flex-1 flex items-center gap-0.5 sm:gap-1 h-9 cursor-pointer">
+          {waveformHeights.map((h, i) => {
+            const barProgress = (i / waveformHeights.length) * 100;
+            const isPlayed = barProgress <= progressPercent;
+
+            return (
+              <div
+                key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSeek(i, waveformHeights.length);
+                }}
+                className="flex-1 flex items-center justify-center h-full group/bar py-1"
+              >
+                <span
+                  className={`w-full rounded-full transition-all duration-150 ${
+                    isPlayed
+                      ? isSenderMe
+                        ? "bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]"
+                        : "bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]"
+                      : isSenderMe
+                      ? "bg-white/35 group-hover/bar:bg-white/60"
+                      : "bg-white/20 group-hover/bar:bg-white/40"
+                  }`}
+                  style={{
+                    height: `${h}%`,
+                    transform:
+                      isPlaying && isPlayed && Math.abs(barProgress - progressPercent) < 8
+                        ? "scaleY(1.2)"
+                        : "scaleY(1)",
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Speed button (1x / 1.5x / 2x) */}
+        <button
+          type="button"
+          onClick={toggleSpeed}
+          className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all flex-shrink-0 ${
+            isSenderMe
+              ? "bg-black/25 text-white/90 hover:bg-black/40"
+              : "bg-white/10 text-slate-300 hover:bg-white/20 hover:text-white"
+          }`}
+          title="Playback speed"
+        >
+          {playbackRate}x
+        </button>
+      </div>
+
+      {/* Meta Bar: Time + Mic indicator */}
+      <div
+        className={`flex items-center justify-between text-[10px] font-medium px-0.5 ${
+          isSenderMe ? "text-white/80" : "text-slate-400"
+        }`}
+      >
+        <span className="flex items-center gap-1">
+          <Mic className="w-3 h-3 text-[#EC4899]" />
+          <span>Voice Note</span>
+        </span>
+        <span>
+          {isPlaying
+            ? formatAudioTime(playbackTime)
+            : formatAudioTime(duration || msg.audioDuration)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const calculateVibeScore = (messages) => {
+  if (!messages || messages.length === 0) return 20;
+  let score = 20;
+  const textCount = messages.filter((m) => m.messageType === "text" || !m.messageType).length;
+  const audioCount = messages.filter((m) => m.messageType === "audio" || m.audioUrl).length;
+  const reactionCount = messages.reduce((acc, m) => acc + (m.reactions?.length || 0), 0);
+
+  score += Math.min(40, textCount * 2);
+  score += Math.min(25, audioCount * 6);
+  score += Math.min(15, reactionCount * 3);
+
+  return Math.min(100, score);
+};
+
+
+
 const Chat = () => {
   const { targetUserId } = useParams();
   const navigate = useNavigate();
@@ -254,6 +457,48 @@ const Chat = () => {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
+
+  // Voice Note Recording & Playback State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioStreamRef = useRef(null);
+  const recordingTimerRef = useRef(null);
+
+  // Streaks & Vibe Meter State
+  const [chatStreak, setChatStreak] = useState(0);
+  const [showVibeModal, setShowVibeModal] = useState(false);
+
+  const vibeScore = calculateVibeScore(chatMessages);
+  const prevVibeScoreRef = useRef(20);
+
+  // Trigger celebration when reaching 100% Vibe Score
+  useEffect(() => {
+    if (vibeScore === 100 && prevVibeScoreRef.current < 100) {
+      try {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 },
+        });
+      } catch (e) {}
+      setToastMessage("🎉 100% YMCA Chemistry Achieved! You both are soulmates! ✨");
+      setTimeout(() => setToastMessage(null), 4000);
+    }
+    prevVibeScoreRef.current = vibeScore;
+  }, [vibeScore]);
+
+  // Clean up audio tracks & timers on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
 
   // Dismiss floating popups on outside click
   useEffect(() => {
@@ -414,11 +659,20 @@ const Chat = () => {
       }
     };
 
+    // Real-time streak updated
+    const handleStreakUpdated = ({ streak }) => {
+      if (!isSubscribed) return;
+      if (typeof streak === "number") {
+        setChatStreak(streak);
+      }
+    };
+
     socket.on("messageReceived", handleMessageReceived);
     socket.on("messageReacted", handleMessageReacted);
     socket.on("messageUnsent", handleMessageUnsent);
     socket.on("chatCleared", handleChatCleared);
     socket.on("themeChanged", handleThemeChanged);
+    socket.on("streakUpdated", handleStreakUpdated);
     socket.on("userTyping", handleUserTyping);
     socket.on("userStoppedTyping", handleUserStoppedTyping);
     socket.on("messagesMarkedRead", handleMessagesMarkedRead);
@@ -430,6 +684,9 @@ const Chat = () => {
         const res = await axiosClient.get(`/chat/${targetUserId}`);
         if (isSubscribed) {
           setChatMessages(res.data.messages || []);
+          if (typeof res.data.streak === "number") {
+            setChatStreak(res.data.streak);
+          }
           if (res.data.theme && CHAT_THEMES[res.data.theme]) {
             setActiveTheme(res.data.theme);
             localStorage.setItem(`ymca_theme_${targetUserId}`, res.data.theme);
@@ -461,6 +718,7 @@ const Chat = () => {
       socket.off("messageUnsent", handleMessageUnsent);
       socket.off("chatCleared", handleChatCleared);
       socket.off("themeChanged", handleThemeChanged);
+      socket.off("streakUpdated", handleStreakUpdated);
       socket.off("userTyping", handleUserTyping);
       socket.off("userStoppedTyping", handleUserStoppedTyping);
       socket.off("messagesMarkedRead", handleMessagesMarkedRead);
@@ -540,6 +798,122 @@ const Chat = () => {
     }, 300);
   };
 
+  // Voice Note Handlers
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setToastMessage("Audio recording is not supported in this browser.");
+        setTimeout(() => setToastMessage(null), 3500);
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+          mimeType = "audio/ogg";
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(100);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Mic access error:", err);
+      setToastMessage("Microphone permission denied. Please allow mic access.");
+      setTimeout(() => setToastMessage(null), 3500);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  };
+
+  const sendRecording = () => {
+    if (!mediaRecorderRef.current || isRecording === false) return;
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+    const recordedDuration = recordingSeconds || 1;
+
+    mediaRecorderRef.current.onstop = () => {
+      const audioBlob = new Blob(audioChunksRef.current, {
+        type: mediaRecorderRef.current.mimeType || "audio/webm",
+      });
+
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = () => {
+        const base64Audio = reader.result;
+
+        const roomId = [loggedInUser._id.toString(), targetUserId.toString()].sort().join("_");
+        socketRef.current?.emit("sendMessage", {
+          roomId,
+          userId: loggedInUser._id,
+          targetUserId,
+          text: "🎤 Voice note",
+          messageType: "audio",
+          audioUrl: base64Audio,
+          audioDuration: recordedDuration,
+          senderName: loggedInUser.firstName,
+          replyTo: replyingTo
+            ? {
+                messageId: replyingTo._id,
+                text: replyingTo.text,
+                senderName: replyingTo.senderName,
+              }
+            : null,
+        });
+
+        setReplyingTo(null);
+        setIsRecording(false);
+        setRecordingSeconds(0);
+        audioChunksRef.current = [];
+      };
+    };
+
+    try {
+      mediaRecorderRef.current.stop();
+    } catch (e) {
+      cancelRecording();
+    }
+  };
+
   // Toggle emoji reaction with optimistic UI
   const handleToggleReaction = (msg, emoji) => {
     if (!targetUserId || !socketRef.current || !msg?._id) return;
@@ -600,8 +974,9 @@ const Chat = () => {
 
   // Copy message text to clipboard
   const handleCopyText = (msg) => {
-    if (!msg?.text) return;
-    navigator.clipboard?.writeText(msg.text);
+    const textToCopy = msg.audioUrl ? "🎤 [Voice note]" : msg?.text;
+    if (!textToCopy) return;
+    navigator.clipboard?.writeText(textToCopy);
     setActiveMoreMsgId(null);
     setToastMessage("Copied to clipboard! 📋");
     setTimeout(() => setToastMessage(null), 2500);
@@ -867,6 +1242,15 @@ const Chat = () => {
                 <h3 className="font-bold text-white text-sm truncate group-hover:text-purple-300 transition-colors">
                   {targetUser ? `${targetUser.firstName} ${targetUser.lastName || ""}` : "Loading..."}
                 </h3>
+                {chatStreak > 0 && (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 font-extrabold text-[10px] shadow-sm animate-pulse flex-shrink-0"
+                    title={`${chatStreak} day chat streak!`}
+                  >
+                    <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
+                    <span>{chatStreak}d</span>
+                  </span>
+                )}
                 {isBlockedByMe && (
                   <span className="px-1.5 py-0.2 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-bold">
                     Blocked
@@ -890,8 +1274,26 @@ const Chat = () => {
           </div>
         </div>
 
-        {/* Action icons (Audio, Video, Info) */}
+        {/* Live Vibe Meter + Action icons */}
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          {/* Vibe Meter Pill */}
+          <button
+            type="button"
+            onClick={() => setShowVibeModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer group"
+            title="Campus Chemistry & Vibe Score"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400 group-hover:scale-125 transition-transform" />
+            <span className="text-[11px] font-extrabold bg-gradient-to-r from-purple-300 via-pink-300 to-amber-300 bg-clip-text text-transparent">
+              {vibeScore}%
+            </span>
+            <div className="w-12 h-1.5 rounded-full bg-white/10 overflow-hidden ring-1 ring-white/10 hidden sm:block">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] transition-all duration-700"
+                style={{ width: `${vibeScore}%` }}
+              />
+            </div>
+          </button>
           <button
             onClick={() => handleTriggerCall("audio")}
             className="w-9 h-9 rounded-full hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
@@ -1170,7 +1572,17 @@ const Chat = () => {
                       </div>
                     )}
 
-                    <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    {msg.messageType === "audio" || msg.audioUrl ? (
+                      <VoiceNotePlayer
+                        msg={msg}
+                        isSenderMe={isSenderMe}
+                        currentTheme={currentTheme}
+                        playingAudioId={playingAudioId}
+                        setPlayingAudioId={setPlayingAudioId}
+                      />
+                    ) : (
+                      <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    )}
 
                     <div className="flex items-center justify-end gap-1 text-[9px] opacity-80 mt-1">
                       <span>
@@ -1342,6 +1754,54 @@ const Chat = () => {
                 You cannot send messages to this student.
               </p>
             </div>
+          ) : isRecording ? (
+            /* Voice Note Recording Studio */
+            <div className="flex items-center justify-between gap-3 bg-[#171A2B] border border-rose-500/40 rounded-full px-4 py-2.5 shadow-xl animate-fade-in">
+              {/* Pulsing Red Dot & Elapsed Seconds */}
+              <div className="flex items-center gap-2 text-rose-400 font-bold text-xs flex-shrink-0">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                </span>
+                <span>{formatAudioTime(recordingSeconds)}</span>
+              </div>
+
+              {/* Animated Live Recording Waveform */}
+              <div className="flex items-center gap-1 flex-1 justify-center px-2 h-6">
+                {[40, 75, 50, 90, 65, 100, 55, 80, 45, 95, 70, 85, 60, 100, 75, 50, 90, 65].map(
+                  (h, i) => (
+                    <span
+                      key={i}
+                      className="w-1 rounded-full bg-gradient-to-t from-purple-500 to-pink-500 transition-all duration-150"
+                      style={{
+                        height: `${Math.max(6, (h * (((recordingSeconds + i) % 4) + 1)) / 4)}px`,
+                      }}
+                    />
+                  )
+                )}
+              </div>
+
+              {/* Action Buttons: Discard (Trash) & Send Voice Note */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={cancelRecording}
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors"
+                  title="Discard voice note"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={sendRecording}
+                  className="w-9 h-9 rounded-full bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-500/30"
+                  title="Send voice note"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           ) : (
             <form onSubmit={handleSendMessage} className="flex items-center gap-2">
               <input
@@ -1362,14 +1822,25 @@ const Chat = () => {
                   <Send className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => sendQuickText("❤️")}
-                  className="w-11 h-11 rounded-full bg-white/5 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-                  title="Send Heart"
-                >
-                  <Heart className="w-5 h-5 fill-rose-500" />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    className="w-11 h-11 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500 hover:to-pink-500 border border-purple-500/30 text-purple-300 hover:text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-md shadow-purple-500/20 group"
+                    title="Record Voice Note"
+                  >
+                    <Mic className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => sendQuickText("❤️")}
+                    className="w-11 h-11 rounded-full bg-white/5 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+                    title="Send Heart"
+                  >
+                    <Heart className="w-5 h-5 fill-rose-500" />
+                  </button>
+                </div>
               )}
             </form>
           )}
@@ -1754,6 +2225,88 @@ const Chat = () => {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* CAMPUS CHEMISTRY & VIBE METER MODAL                      */}
+      {/* ======================================================== */}
+      {showVibeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-sm bg-[#111422] border border-white/10 rounded-3xl p-6 shadow-2xl space-y-5 animate-slide-up text-white relative text-center">
+            <button
+              onClick={() => setShowVibeModal(false)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-500/20 via-pink-500/20 to-amber-500/20 border border-purple-500/30 flex items-center justify-center mx-auto text-amber-400 shadow-xl shadow-purple-500/20">
+              <Zap className="w-8 h-8 fill-amber-400 animate-pulse" />
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-black bg-gradient-to-r from-purple-300 via-pink-300 to-amber-300 bg-clip-text text-transparent">
+                {vibeScore}% Vibe Score
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Campus Compatibility between you & {targetUser?.firstName || "this student"}
+              </p>
+            </div>
+
+            {/* Streak Highlight */}
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/25 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400">
+                  <Flame className="w-5 h-5 fill-amber-400" />
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-white">
+                    {chatStreak > 0 ? `${chatStreak} Day Chat Streak!` : "Start a Chat Streak!"}
+                  </p>
+                  <p className="text-[10px] text-amber-300/80">
+                    {chatStreak >= 14
+                      ? "YMCA Soulmates 🔥"
+                      : chatStreak >= 7
+                      ? "Canteen Partners ☕"
+                      : chatStreak >= 3
+                      ? "Maggi Buddies 🍜"
+                      : "Chat daily to level up your streak!"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Chemistry Points Breakdown */}
+            <div className="space-y-2 text-left bg-white/5 border border-white/5 rounded-2xl p-3 text-xs">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                How Vibe Score Grows
+              </p>
+              <div className="flex justify-between text-slate-300">
+                <span>Mutual Match</span>
+                <span className="text-purple-400 font-bold">+20%</span>
+              </div>
+              <div className="flex justify-between text-slate-300">
+                <span>Text Messages</span>
+                <span className="text-purple-400 font-bold">+2% each</span>
+              </div>
+              <div className="flex justify-between text-slate-300">
+                <span>Voice Notes</span>
+                <span className="text-pink-400 font-bold">+6% each</span>
+              </div>
+              <div className="flex justify-between text-slate-300">
+                <span>Emoji Reactions</span>
+                <span className="text-emerald-400 font-bold">+3% each</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowVibeModal(false)}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white font-bold text-xs shadow-lg shadow-purple-500/25 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <span>Keep Chatting to Boost Vibe ✨</span>
+            </button>
           </div>
         </div>
       )}

@@ -28,7 +28,7 @@ const Body = () => {
       const userData = res.data.user || res.data;
       dispatch(addUser(userData));
     } catch (err) {
-      if (location.pathname !== "/login") {
+      if (location.pathname !== "/login" && location.pathname !== "/") {
         navigate("/login");
       }
     } finally {

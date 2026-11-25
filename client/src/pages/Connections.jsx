@@ -364,6 +364,15 @@ const Connections = () => {
                           <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-purple-300 transition-colors truncate">
                             {match.firstName} {match.lastName}
                           </h4>
+                          {match.streak > 0 && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-extrabold text-[10px]"
+                              title={`${match.streak} day streak`}
+                            >
+                              <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
+                              <span>{match.streak}d</span>
+                            </span>
+                          )}
                           {match.isBlockedByMe ? (
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold">
                               Blocked

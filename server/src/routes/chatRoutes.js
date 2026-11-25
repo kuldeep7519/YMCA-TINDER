@@ -58,6 +58,7 @@ chatRouter.get("/chat/:targetUserId", auth, async (req, res) => {
     res.status(200).json({
       messages: chat ? chat.messages : [],
       theme: chat?.theme || "classic",
+      streak: chat?.streak || 0,
       targetUser,
       isBlockedByMe: Boolean(myBlock),
       isBlockedByThem: Boolean(theirBlock),

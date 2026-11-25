@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import axiosClient from "../utils/axiosClient";
 import { useDispatch } from "react-redux";
 import { addUser } from "../utils/userSlice";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { compressImage } from "../utils/imageCompressor";
 import {
   Flame,
@@ -612,6 +612,18 @@ const Login = () => {
             ))}
           </div>
         </div>
+        {/* Preview Campus Feed Link (Teaser Mode) */}
+        <div className="mb-6 text-center">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-500/15 via-pink-500/15 to-amber-500/15 border border-purple-500/30 hover:border-pink-500/50 text-xs font-bold text-purple-200 hover:text-white transition-all shadow-sm group"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>50+ Students Swiping Now • Preview Blurred Campus Deck</span>
+            <span className="group-hover:translate-x-1 transition-transform">→</span>
+          </Link>
+        </div>
+
         {/* Header */}
         <div className="text-center space-y-2 mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-lg shadow-purple-500/25 mb-1">
