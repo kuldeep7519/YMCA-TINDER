@@ -198,18 +198,54 @@ userRouter.get("/user/connection", auth, async (req, res) => {
         "interest",
       ]);
 
-    // Fetch all active chats involving logged-in user to attach streak safely
+    // Fetch all active chats involving logged-in user to attach streak & last message safely
     let streakMap = new Map();
+    let lastMessageMap = new Map();
+
     try {
-      const chats = await Chat.find({ participants: loggedinuser._id }).select("participants streak");
+      const chats = await Chat.find({ participants: loggedinuser._id })
+        .select({
+          participants: 1,
+          streak: 1,
+          lastMessageDate: 1,
+          messages: { $slice: -1 },
+        })
+        .lean();
+
       chats.forEach((c) => {
-        const otherId = c.participants.find((p) => p.toString() !== loggedinuser._id.toString());
+        const otherId = c.participants.find(
+          (p) => p.toString() !== loggedinuser._id.toString()
+        );
         if (otherId) {
-          streakMap.set(otherId.toString(), c.streak || 0);
+          const key = otherId.toString();
+          streakMap.set(key, c.streak || 0);
+
+          if (c.messages && c.messages.length > 0) {
+            const lastMsg = c.messages[0];
+            const senderStr = (
+              typeof lastMsg.senderId === "object"
+                ? lastMsg.senderId?._id
+                : lastMsg.senderId
+            )?.toString();
+
+            const isFromMe = senderStr === loggedinuser._id.toString();
+
+            lastMessageMap.set(key, {
+              _id: lastMsg._id,
+              text: lastMsg.text,
+              messageType: lastMsg.messageType || "text",
+              imageUrl: lastMsg.imageUrl || null,
+              audioUrl: lastMsg.audioUrl || null,
+              audioDuration: lastMsg.audioDuration || 0,
+              isRead: Boolean(lastMsg.isRead),
+              isFromMe,
+              createdAt: lastMsg.createdAt,
+            });
+          }
         }
       });
     } catch (e) {
-      console.error("Streak lookup error (handled):", e);
+      console.error("Streak & lastMessage lookup error (handled):", e);
     }
 
     const data = connections
@@ -224,9 +260,17 @@ userRouter.get("/user/connection", auth, async (req, res) => {
         targetObj.isBlockedByMe = myBlockedIds.has(target._id.toString());
         targetObj.isBlockedByThem = theirBlockedIds.has(target._id.toString());
         targetObj.streak = streakMap.get(target._id.toString()) || 0;
+        targetObj.lastMessage = lastMessageMap.get(target._id.toString()) || null;
         return targetObj;
       })
       .filter(Boolean);
+
+    // Sort matches: conversations with the most recent message appear first
+    data.sort((a, b) => {
+      const timeA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+      const timeB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
 
     res.status(200).json({
       data,

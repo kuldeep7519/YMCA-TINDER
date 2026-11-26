@@ -31,22 +31,17 @@ const Feed = () => {
 
   const [filters, setFilters] = useState({
     gender: "all",
-    branch: "all",
-    year: "all",
   });
 
-  const activeFilterCount =
-    (filters.gender !== "all" ? 1 : 0) +
-    (filters.branch !== "all" ? 1 : 0) +
-    (filters.year !== "all" ? 1 : 0);
+  const activeFilterCount = filters.gender !== "all" ? 1 : 0;
 
   const getFeed = async (activeFilters = filters) => {
     try {
       setLoading(true);
       const params = {};
-      if (activeFilters.gender !== "all") params.gender = activeFilters.gender;
-      if (activeFilters.branch !== "all") params.branch = activeFilters.branch;
-      if (activeFilters.year !== "all") params.year = activeFilters.year;
+      if (activeFilters.gender && activeFilters.gender !== "all") {
+        params.gender = activeFilters.gender;
+      }
 
       const res = await axiosClient.get("/user/feed", { params });
       dispatch(addFeed(res.data.data));
@@ -74,15 +69,21 @@ const Feed = () => {
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);
     getFeed(newFilters);
-    setToastMessage("Preferences updated! Loading customized feed...");
+    const genderLabels = {
+      female: "Showing Women Only",
+      male: "Showing Men Only",
+      others: "Showing Others",
+      all: "Showing Everyone",
+    };
+    setToastMessage(genderLabels[newFilters.gender] || "Preferences updated!");
     setTimeout(() => setToastMessage(null), 2500);
   };
 
   const handleResetFilters = () => {
-    const defaultFilters = { gender: "all", branch: "all", year: "all" };
+    const defaultFilters = { gender: "all" };
     setFilters(defaultFilters);
     getFeed(defaultFilters);
-    setToastMessage("Filters reset to all YMCA students.");
+    setToastMessage("Preferences reset to all YMCA students.");
     setTimeout(() => setToastMessage(null), 2500);
   };
 
@@ -214,22 +215,26 @@ const Feed = () => {
           )}
         </div>
 
-        {/* Filter Toggle Button */}
+        {/* Discovery Gender Filter Button */}
         <button
           onClick={() => setShowFilterModal(true)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border ${
             activeFilterCount > 0
               ? "bg-purple-500/15 border-purple-500/40 text-purple-300 shadow-sm shadow-purple-500/20"
               : "bg-white/5 border-white/10 text-slate-300 hover:text-white hover:bg-white/10"
           }`}
+          title="Change Discovery Preference"
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>Filters</span>
-          {activeFilterCount > 0 && (
-            <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white text-[10px] font-black flex items-center justify-center">
-              {activeFilterCount}
-            </span>
-          )}
+          <SlidersHorizontal className="w-3.5 h-3.5 text-[#A855F7]" />
+          <span>
+            {filters.gender === "female"
+              ? "Women"
+              : filters.gender === "male"
+              ? "Men"
+              : filters.gender === "others"
+              ? "Others"
+              : "Everyone"}
+          </span>
         </button>
       </div>
 
@@ -277,11 +282,11 @@ const Feed = () => {
 
           <div className="space-y-2">
             <h3 className="text-2xl font-black text-white">
-              {activeFilterCount > 0 ? "No Students Match Filters" : "That's Everyone for Today!"}
+              {activeFilterCount > 0 ? "No Profiles Match Filter" : "That's Everyone for Today!"}
             </h3>
             <p className="text-slate-400 text-sm leading-relaxed">
               {activeFilterCount > 0
-                ? "Try broadening your department, gender, or academic year preferences to discover more YMCA students."
+                ? "Switch preference back to 'Everyone' to discover all students across JC Bose UST campus."
                 : "You've swiped through all available JC Bose UST profiles. Check back later or review your incoming requests!"}
             </p>
           </div>

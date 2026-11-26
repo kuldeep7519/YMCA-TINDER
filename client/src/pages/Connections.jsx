@@ -2,8 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import axiosClient from "../utils/axiosClient";
-import { addConnections, removeConnection, updateConnection } from "../utils/connectionSlice";
+import {
+  addConnections,
+  removeConnection,
+  updateConnection,
+  updateLastMessage,
+} from "../utils/connectionSlice";
 import { clearUnreadCount } from "../utils/notificationSlice";
+import { createSocketConnection } from "../utils/socket";
 import ReportModal from "../components/ReportModal";
 import {
   Heart,
@@ -18,6 +24,8 @@ import {
   Flame,
   MessageCircle,
   X,
+  Image as ImageIcon,
+  Mic,
 } from "lucide-react";
 
 const Connections = () => {
@@ -63,6 +71,77 @@ const Connections = () => {
       setLoading(false);
     }
   };
+
+  // Helper for human-readable conversation timestamps
+  const formatMessageTime = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const now = new Date();
+      const isToday =
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
+
+      if (isToday) {
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const isYesterday =
+        d.getDate() === yesterday.getDate() &&
+        d.getMonth() === yesterday.getMonth() &&
+        d.getFullYear() === yesterday.getFullYear();
+
+      if (isYesterday) return "Yesterday";
+
+      return d.toLocaleDateString([], { day: "numeric", month: "short" });
+    } catch (e) {
+      return "";
+    }
+  };
+
+  // Real-time socket listener for incoming messages on Matches/Direct page
+  useEffect(() => {
+    if (!loggedInUser?._id) return;
+    const socket = createSocketConnection();
+    socket.emit("registerUser", loggedInUser._id);
+
+    const handleNewMessage = (payload) => {
+      if (!payload) return;
+      const senderId = payload.senderId?.toString();
+      const isFromMe = senderId === loggedInUser._id?.toString();
+      const otherUserId = isFromMe ? payload.targetUserId?.toString() : senderId;
+
+      if (otherUserId) {
+        dispatch(
+          updateLastMessage({
+            targetUserId: otherUserId,
+            lastMessage: {
+              _id: payload._id,
+              text: payload.text,
+              messageType: payload.messageType || "text",
+              imageUrl: payload.imageUrl || null,
+              audioUrl: payload.audioUrl || null,
+              audioDuration: payload.audioDuration || 0,
+              isRead: Boolean(payload.isRead),
+              isFromMe,
+              createdAt: payload.createdAt || new Date().toISOString(),
+            },
+          })
+        );
+      }
+    };
+
+    socket.on("messageReceived", handleNewMessage);
+    socket.on("newNotification", handleNewMessage);
+
+    return () => {
+      socket.off("messageReceived", handleNewMessage);
+      socket.off("newNotification", handleNewMessage);
+    };
+  }, [loggedInUser?._id, dispatch]);
 
   useEffect(() => {
     getConnections();
@@ -390,17 +469,63 @@ const Connections = () => {
                           {match.year && <span className="text-slate-500">• {match.year}</span>}
                         </p>
 
-                        <p className="text-xs text-slate-400 truncate mt-0.5">
-                          {match.bio ? `"${match.bio}"` : "Matched on YMCA Match • Tap to chat 👋"}
-                        </p>
+                        {match.lastMessage ? (
+                          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                            <p
+                              className={`text-xs truncate flex items-center gap-1 min-w-0 ${
+                                !match.lastMessage.isRead && !match.lastMessage.isFromMe
+                                  ? "text-white font-bold"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {match.lastMessage.isFromMe && (
+                                <span className="text-slate-500 font-medium flex-shrink-0">You: </span>
+                              )}
+
+                              {match.lastMessage.messageType === "image" || match.lastMessage.imageUrl ? (
+                                <span className="inline-flex items-center gap-1 text-purple-300 font-medium truncate">
+                                  <ImageIcon className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                                  <span>Photo</span>
+                                  {match.lastMessage.text && match.lastMessage.text !== "📷 Photo" && (
+                                    <span className="text-slate-400 font-normal truncate">• {match.lastMessage.text}</span>
+                                  )}
+                                </span>
+                              ) : match.lastMessage.messageType === "audio" || match.lastMessage.audioUrl ? (
+                                <span className="inline-flex items-center gap-1 text-pink-300 font-medium flex-shrink-0">
+                                  <Mic className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+                                  <span>Voice note</span>
+                                </span>
+                              ) : (
+                                <span className="truncate">{match.lastMessage.text}</span>
+                              )}
+                            </p>
+
+                            {match.lastMessage.createdAt && (
+                              <span className="text-[10px] text-slate-500 font-medium flex-shrink-0 ml-auto pl-1">
+                                • {formatMessageTime(match.lastMessage.createdAt)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 truncate mt-0.5">
+                            {match.bio ? `"${match.bio}"` : "Matched on YMCA Match • Tap to chat 👋"}
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Right side: Chat Icon & Dropdown */}
+                    {/* Right side: Chat Icon, Unread Dot & Dropdown */}
                     <div
-                      className="flex items-center gap-1 flex-shrink-0"
+                      className="flex items-center gap-2 flex-shrink-0"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {match.lastMessage && !match.lastMessage.isRead && !match.lastMessage.isFromMe && (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 ring-2 ring-[#111422] shadow-sm shadow-purple-500/50 flex-shrink-0 animate-pulse"
+                          title="New message"
+                        />
+                      )}
+
                       <button
                         onClick={() => navigate(`/chat/${match._id}`)}
                         className="w-9 h-9 rounded-full bg-white/5 hover:bg-purple-500/20 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
