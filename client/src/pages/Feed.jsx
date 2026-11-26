@@ -184,6 +184,7 @@ const Feed = () => {
         isOpen={showDailyLimitModal}
         onClose={() => setShowDailyLimitModal(false)}
         dailyLimit={swipeQuota?.dailyLimit || 20}
+        remainingSwipes={swipeQuota?.remainingSwipes ?? 20}
       />
 
       {/* Discovery Header Controls */}
@@ -197,17 +198,15 @@ const Feed = () => {
           {/* Daily Swipes Counter Badge */}
           {swipeQuota && (
             <button
-              onClick={() => {
-                if (swipeQuota.remainingSwipes <= 0) setShowDailyLimitModal(true);
-              }}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border transition-all ${
+              onClick={() => setShowDailyLimitModal(true)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
                 swipeQuota.remainingSwipes === 0
-                  ? "bg-rose-500/20 border-rose-500/40 text-rose-300 cursor-pointer animate-pulse"
+                  ? "bg-rose-500/20 border-rose-500/40 text-rose-300 animate-pulse hover:bg-rose-500/30 shadow-rose-500/20"
                   : swipeQuota.remainingSwipes <= 5
-                  ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                  : "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30 shadow-amber-500/10"
+                  : "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 shadow-purple-500/10"
               }`}
-              title="Daily free campus swipes left for today (Resets at midnight)"
+              title="Click to view daily swipe balance and recharge timer"
             >
               <Sparkles className="w-3 h-3 text-[#EC4899]" />
               <span>{swipeQuota.remainingSwipes}/{swipeQuota.dailyLimit || 20} left</span>
