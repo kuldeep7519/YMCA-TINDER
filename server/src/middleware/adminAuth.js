@@ -4,9 +4,10 @@ import jwt from "jsonwebtoken";
 const adminAuth = async (req, res, next) => {
   try {
     const adminKey = req.headers["x-admin-key"] || req.query.adminKey;
+    const realPasscode = process.env.ADMIN_PASSCODE || "Kuldeep@YMCA#2026!Admin";
 
-    // Master secret passcode for direct developer access
-    if (adminKey && adminKey === "ymca2026admin") {
+    // Master secret passcode for direct developer access (Must match secret passcode, NOT decoy)
+    if (adminKey && adminKey === realPasscode) {
       req.isAdmin = true;
       return next();
     }

@@ -76,11 +76,7 @@ const AdminDashboard = () => {
       setIsAuthenticated(true);
       return;
     }
-
-    if (adminKey === "ymca2026admin") {
-      setIsAuthenticated(true);
-    }
-  }, [loggedInUser, adminKey]);
+  }, [loggedInUser]);
 
   // 2. Fetch Dashboard Data
   const fetchDashboardData = async () => {
@@ -293,7 +289,7 @@ const AdminDashboard = () => {
               <KeyRound className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
               <input
                 type="password"
-                placeholder="Enter admin passcode (e.g. ymca2026admin)"
+                placeholder="Enter admin passcode (e.g. LUND LELE GANDU)"
                 value={passcodeInput}
                 onChange={(e) => setPasscodeInput(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-[#171A2B] border border-white/10 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition-colors"

@@ -10,7 +10,8 @@ const adminRouter = express.Router();
 // POST /admin/verify-passcode - Verify master admin passcode
 adminRouter.post("/admin/verify-passcode", (req, res) => {
   const { passcode } = req.body;
-  if (passcode === "ymca2026admin") {
+  const realPasscode = process.env.ADMIN_PASSCODE || "Kuldeep@YMCA#2026!Admin";
+  if (passcode && passcode.trim() === realPasscode) {
     return res.status(200).json({ success: true, message: "Admin access granted" });
   }
   return res.status(401).json({ success: false, message: "Invalid admin passcode" });
@@ -148,6 +149,11 @@ adminRouter.delete("/admin/user/:userId", adminAuth, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    // Protection: Never allow deleting an admin or founder account
+    if (user.role === "admin" || user.email === "kuldeeprao9812@gmail.com") {
+      return res.status(403).json({ message: "Protected account: Administrator profiles cannot be deleted." });
     }
 
     // Clean up related connections, chats, and reports
