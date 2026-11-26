@@ -3,8 +3,8 @@ import { createSlice } from "@reduxjs/toolkit";
 const quotaSlice = createSlice({
   name: "quota",
   initialState: {
-    remainingSwipes: 20,
-    dailyLimit: 20,
+    remainingSwipes: 15,
+    dailyLimit: 15,
     swipesUsed: 0,
   },
   reducers: {
@@ -12,7 +12,7 @@ const quotaSlice = createSlice({
       return { ...state, ...action.payload };
     },
     decrementQuota: (state) => {
-      const remaining = Math.max(0, (state.remainingSwipes ?? 20) - 1);
+      const remaining = Math.max(0, (state.remainingSwipes ?? 15) - 1);
       return {
         ...state,
         remainingSwipes: remaining,

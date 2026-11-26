@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Moon, Clock, MessageCircle, Sparkles, X, Heart, ShieldCheck, Flame, Compass } from "lucide-react";
 
-const DailyLimitModal = ({ isOpen, onClose, dailyLimit = 20, remainingSwipes = 0 }) => {
+const DailyLimitModal = ({ isOpen, onClose, dailyLimit = 15, remainingSwipes = 0 }) => {
   const navigate = useNavigate();
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
@@ -36,7 +36,7 @@ const DailyLimitModal = ({ isOpen, onClose, dailyLimit = 20, remainingSwipes = 0
 
   const padZero = (n) => String(n).padStart(2, "0");
   const isLimitReached = remainingSwipes <= 0;
-  const percentage = Math.min(100, Math.max(0, Math.round((remainingSwipes / (dailyLimit || 20)) * 100)));
+  const percentage = Math.min(100, Math.max(0, Math.round((remainingSwipes / (dailyLimit || 15)) * 100)));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">

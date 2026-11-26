@@ -47,6 +47,7 @@ const initializeSocket = (server) => {
   }
 
   const io = new Server(server, {
+    maxHttpBufferSize: 1e7, // 10MB buffer to safely accommodate voice notes and photos without dropping socket connection
     cors: {
       origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
@@ -289,6 +290,7 @@ const initializeSocket = (server) => {
         const payload = {
           _id: savedMsg._id,
           senderId: userId.toString(),
+          targetUserId: targetUserId.toString(),
           senderName: senderName || "Student",
           senderPhoto: finalPhoto,
           text: savedMsg.text,

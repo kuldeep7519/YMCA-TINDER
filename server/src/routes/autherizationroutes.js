@@ -40,6 +40,17 @@ authRouter.post("/send-otp", async (req, res) => {
       });
     }
 
+    // 60-second cooldown check to prevent spamming and SMTP exhaustion
+    const existingOtp = await OTP.findOne({ email: normalizedEmail });
+    if (existingOtp && existingOtp.createdAt) {
+      const elapsedSeconds = Math.floor((Date.now() - new Date(existingOtp.createdAt).getTime()) / 1000);
+      if (elapsedSeconds < 60) {
+        return res.status(429).json({
+          message: `Please wait ${60 - elapsedSeconds}s before requesting a new code.`,
+        });
+      }
+    }
+
     // Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -306,6 +317,17 @@ authRouter.post("/forgot-password/send-otp", async (req, res) => {
       });
     }
 
+    // 60-second cooldown check
+    const existingOtp = await OTP.findOne({ email: normalizedEmail });
+    if (existingOtp && existingOtp.createdAt) {
+      const elapsedSeconds = Math.floor((Date.now() - new Date(existingOtp.createdAt).getTime()) / 1000);
+      if (elapsedSeconds < 60) {
+        return res.status(429).json({
+          message: `Please wait ${60 - elapsedSeconds}s before requesting a new reset code.`,
+        });
+      }
+    }
+
     // Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -390,7 +412,7 @@ authRouter.post("/forgot-password/reset", async (req, res) => {
     const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
-    res.cookie("token", token, { httpOnly: true });
+    res.cookie("token", token, getCookieOptions());
 
     res.status(200).json({
       success: true,

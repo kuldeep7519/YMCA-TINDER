@@ -23,7 +23,7 @@ const safeUploadSingle = (fieldName) => (req, res, next) => {
 };
 
 // 1. Generic photo upload (Used during student signup/registration)
-uploadRouter.post("/upload", upload.single("photo"), async (req, res) => {
+uploadRouter.post("/upload", safeUploadSingle("photo"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No photo file provided" });
@@ -48,7 +48,7 @@ uploadRouter.post("/upload", upload.single("photo"), async (req, res) => {
 uploadRouter.post(
   "/upload/profile-photo",
   auth,
-  upload.single("photo"),
+  safeUploadSingle("photo"),
   async (req, res) => {
     try {
       if (!req.file) {

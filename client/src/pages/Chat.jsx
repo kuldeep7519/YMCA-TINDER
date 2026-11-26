@@ -1122,7 +1122,18 @@ const Chat = () => {
 
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
+        setRecordingSeconds((prev) => {
+          if (prev >= 59) {
+            // Auto stop at 60 seconds limit to preserve high quality without socket lag
+            setTimeout(() => {
+              sendRecording();
+              setToastMessage("Voice note reached 60-second limit and was sent.");
+              setTimeout(() => setToastMessage(null), 3000);
+            }, 50);
+            return 60;
+          }
+          return prev + 1;
+        });
       }, 1000);
     } catch (err) {
       console.error("Mic access error:", err);

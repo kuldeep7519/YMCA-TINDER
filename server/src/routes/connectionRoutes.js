@@ -6,14 +6,23 @@ import auth from "../middleware/auth.js";
 
 const connectionRouter = express.Router();
 
-export const DAILY_SWIPE_LIMIT = 20;
+export const DAILY_SWIPE_LIMIT = 15;
+
+// Formats date in Indian Standard Time (IST - Asia/Kolkata) YYYY-MM-DD
+const getISTDateString = (date) => {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(date);
+  } catch (e) {
+    return date.toISOString().slice(0, 10);
+  }
+};
 
 export const checkAndResetDailySwipes = (user) => {
   if (!user) return;
   const now = new Date();
   const lastDate = user.lastSwipeDate ? new Date(user.lastSwipeDate) : null;
 
-  if (!lastDate || now.toDateString() !== lastDate.toDateString()) {
+  if (!lastDate || getISTDateString(now) !== getISTDateString(lastDate)) {
     user.dailySwipesCount = 0;
     user.lastSwipeDate = now;
   }
@@ -80,6 +89,53 @@ connectionRouter.post("/request/send/:status/:to_id", auth, async (req, res) => 
     });
 
     if (ExistingConnection) {
+      // If the target user already liked me (interested or superlike) and I like them back:
+      // IT'S A MATCH! Instantly upgrade connection to "accepted"
+      const isReverseLike =
+        ExistingConnection.fromuserid.toString() === to_id.toString() &&
+        ExistingConnection.touserid.toString() === loggedinuser._id.toString() &&
+        (ExistingConnection.status === "interested" || ExistingConnection.status === "superlike");
+
+      if (isReverseLike && (status === "interested" || status === "superlike")) {
+        ExistingConnection.status = "accepted";
+        await ExistingConnection.save();
+
+        // Consume 1 swipe on interested / superlike
+        loggedinuser.dailySwipesCount = (loggedinuser.dailySwipesCount || 0) + 1;
+        loggedinuser.lastSwipeDate = new Date();
+        await loggedinuser.save();
+
+        // Real-time socket notification to the other user
+        const io = req.app.get("io");
+        if (io) {
+          io.to(to_id.toString()).emit("newRequestNotification", {
+            from: loggedinuser.firstName,
+            status: "accepted",
+          });
+        }
+
+        checkAndResetDailySwipes(loggedinuser);
+        const remainingSwipes = Math.max(0, DAILY_SWIPE_LIMIT - (loggedinuser.dailySwipesCount || 0));
+
+        return res.status(200).json({
+          success: true,
+          isMatch: true,
+          message: "It's a Match! 🎉",
+          matchedUser: {
+            _id: IsuserExist._id,
+            firstName: IsuserExist.firstName,
+            lastName: IsuserExist.lastName,
+            photoUrl: IsuserExist.photoUrl,
+            branch: IsuserExist.branch,
+            year: IsuserExist.year,
+            bio: IsuserExist.bio,
+            interest: IsuserExist.interest,
+          },
+          remainingSwipes,
+          dailyLimit: DAILY_SWIPE_LIMIT,
+        });
+      }
+
       return res.status(400).send("Connection request already exists");
     }
 
@@ -175,14 +231,18 @@ connectionRouter.post(
         return res.status(400).json({ success: false, message: "targetUserId is required" });
       }
 
-      await connectionModel.deleteMany({
-        $or: [
-          { fromuserid: loggedinuser._id, touserid: targetUserId },
-          { fromuserid: targetUserId, touserid: loggedinuser._id },
-        ],
-      });
+      // Mark connection as rejected so they do NOT reappear in each other's swipe feed
+      await connectionModel.updateMany(
+        {
+          $or: [
+            { fromuserid: loggedinuser._id, touserid: targetUserId },
+            { fromuserid: targetUserId, touserid: loggedinuser._id },
+          ],
+        },
+        { $set: { status: "rejected" } }
+      );
 
-      // Also clean up any active chat conversation so it cannot be queried
+      // Clean up chat conversation so it cannot be queried
       await Chat.deleteMany({
         participants: { $all: [loggedinuser._id, targetUserId] },
       });

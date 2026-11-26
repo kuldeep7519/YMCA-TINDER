@@ -111,12 +111,15 @@ const Feed = () => {
         dispatch(
           setQuota({
             remainingSwipes: res.data.remainingSwipes,
-            dailyLimit: res.data.dailyLimit || 20,
+            dailyLimit: res.data.dailyLimit || 15,
           })
         );
       }
 
-      if (status === "superlike") {
+      // If both students liked each other, trigger the celebratory "It's a Match!" confetti screen
+      if (res.data?.isMatch) {
+        setMatchedUser(res.data.matchedUser || currentCard);
+      } else if (status === "superlike") {
         setToastMessage(`You Super Liked ${currentCard?.firstName || "this student"}! ⭐ Campus Crush sent!`);
       } else if (status === "interested") {
         setToastMessage(`You liked ${currentCard?.firstName || "this student"}! 💖`);
@@ -185,8 +188,8 @@ const Feed = () => {
       <DailyLimitModal
         isOpen={showDailyLimitModal}
         onClose={() => setShowDailyLimitModal(false)}
-        dailyLimit={quota?.dailyLimit || 20}
-        remainingSwipes={quota?.remainingSwipes ?? 20}
+        dailyLimit={quota?.dailyLimit || 15}
+        remainingSwipes={quota?.remainingSwipes ?? 15}
       />
 
       {/* Discovery Header Controls */}
@@ -201,16 +204,16 @@ const Feed = () => {
           <button
             onClick={() => setShowDailyLimitModal(true)}
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
-              (quota?.remainingSwipes ?? 20) === 0
+              (quota?.remainingSwipes ?? 15) === 0
                 ? "bg-rose-500/20 border-rose-500/40 text-rose-300 animate-pulse hover:bg-rose-500/30 shadow-rose-500/20"
-                : (quota?.remainingSwipes ?? 20) <= 5
+                : (quota?.remainingSwipes ?? 15) <= 5
                 ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30 shadow-amber-500/10"
                 : "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 shadow-purple-500/10"
             }`}
             title="Click to view daily swipe balance and recharge timer"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#EC4899]" />
-            <span>{(quota?.remainingSwipes ?? 20)}/{quota?.dailyLimit || 20} left</span>
+            <span>{(quota?.remainingSwipes ?? 15)}/{quota?.dailyLimit || 15} left</span>
           </button>
         </div>
 
