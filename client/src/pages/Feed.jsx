@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import axiosClient from "../utils/axiosClient";
 import { addFeed, removeUserFromFeed } from "../utils/feedSlice";
+import { setQuota } from "../utils/quotaSlice";
 import SwipeCard from "../components/SwipeCard";
 import MatchModal from "../components/MatchModal";
 import FilterModal from "../components/FilterModal";
@@ -20,6 +21,7 @@ import { Link } from "react-router-dom";
 const Feed = () => {
   const feed = useSelector((store) => store.feed);
   const loggedInUser = useSelector((store) => store.user);
+  const quota = useSelector((store) => store.quota);
   const dispatch = useDispatch();
 
   const [loading, setLoading] = useState(false);
@@ -27,7 +29,6 @@ const Feed = () => {
   const [toastMessage, setToastMessage] = useState(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
-  const [swipeQuota, setSwipeQuota] = useState(null);
 
   const [filters, setFilters] = useState({
     gender: "all",
@@ -45,8 +46,8 @@ const Feed = () => {
 
       const res = await axiosClient.get("/user/feed", { params });
       dispatch(addFeed(res.data.data));
-      if (res.data.quota) {
-        setSwipeQuota(res.data.quota);
+      if (res.data?.quota) {
+        dispatch(setQuota(res.data.quota));
       }
     } catch (err) {
       console.error("Failed to fetch feed:", err);
@@ -91,8 +92,8 @@ const Feed = () => {
     // If daily campus swipe limit reached on like/superlike, show limit modal
     if (
       (status === "interested" || status === "superlike") &&
-      swipeQuota &&
-      swipeQuota.remainingSwipes <= 0
+      quota &&
+      quota.remainingSwipes <= 0
     ) {
       setShowDailyLimitModal(true);
       return;
@@ -107,11 +108,12 @@ const Feed = () => {
       const res = await axiosClient.post(`/request/send/${status}/${targetUserId}`);
 
       if (res.data?.remainingSwipes !== undefined) {
-        setSwipeQuota((prev) => ({
-          ...prev,
-          remainingSwipes: res.data.remainingSwipes,
-          dailyLimit: res.data.dailyLimit || 20,
-        }));
+        dispatch(
+          setQuota({
+            remainingSwipes: res.data.remainingSwipes,
+            dailyLimit: res.data.dailyLimit || 20,
+          })
+        );
       }
 
       if (status === "superlike") {
@@ -125,7 +127,7 @@ const Feed = () => {
       setTimeout(() => setToastMessage(null), 2500);
     } catch (err) {
       if (err.response?.status === 429 || err.response?.data?.limitReached) {
-        setSwipeQuota((prev) => ({ ...prev, remainingSwipes: 0 }));
+        dispatch(setQuota({ remainingSwipes: 0 }));
         setShowDailyLimitModal(true);
       }
       console.error("Error sending swipe:", err);
@@ -183,8 +185,8 @@ const Feed = () => {
       <DailyLimitModal
         isOpen={showDailyLimitModal}
         onClose={() => setShowDailyLimitModal(false)}
-        dailyLimit={swipeQuota?.dailyLimit || 20}
-        remainingSwipes={swipeQuota?.remainingSwipes ?? 20}
+        dailyLimit={quota?.dailyLimit || 20}
+        remainingSwipes={quota?.remainingSwipes ?? 20}
       />
 
       {/* Discovery Header Controls */}
@@ -195,23 +197,21 @@ const Feed = () => {
             <span>Discover</span>
           </div>
 
-          {/* Daily Swipes Counter Badge */}
-          {swipeQuota && (
-            <button
-              onClick={() => setShowDailyLimitModal(true)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
-                swipeQuota.remainingSwipes === 0
-                  ? "bg-rose-500/20 border-rose-500/40 text-rose-300 animate-pulse hover:bg-rose-500/30 shadow-rose-500/20"
-                  : swipeQuota.remainingSwipes <= 5
-                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30 shadow-amber-500/10"
-                  : "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 shadow-purple-500/10"
-              }`}
-              title="Click to view daily swipe balance and recharge timer"
-            >
-              <Sparkles className="w-3 h-3 text-[#EC4899]" />
-              <span>{swipeQuota.remainingSwipes}/{swipeQuota.dailyLimit || 20} left</span>
-            </button>
-          )}
+          {/* Daily Swipes Counter Badge (Persists in Redux across all page navigations) */}
+          <button
+            onClick={() => setShowDailyLimitModal(true)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
+              (quota?.remainingSwipes ?? 20) === 0
+                ? "bg-rose-500/20 border-rose-500/40 text-rose-300 animate-pulse hover:bg-rose-500/30 shadow-rose-500/20"
+                : (quota?.remainingSwipes ?? 20) <= 5
+                ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30 shadow-amber-500/10"
+                : "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 shadow-purple-500/10"
+            }`}
+            title="Click to view daily swipe balance and recharge timer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#EC4899]" />
+            <span>{(quota?.remainingSwipes ?? 20)}/{quota?.dailyLimit || 20} left</span>
+          </button>
         </div>
 
         {/* Discovery Gender Filter Button */}

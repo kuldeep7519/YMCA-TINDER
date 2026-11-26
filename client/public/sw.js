@@ -1,4 +1,4 @@
-const CACHE_NAME = "ymca-match-v1";
+const CACHE_NAME = "ymca-match-v2";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
@@ -36,10 +36,19 @@ self.addEventListener("activate", (event) => {
 
 // Fetch Event - Network first, fallback to cache
 self.addEventListener("fetch", (event) => {
-  // Ignore API requests and socket.io from cache
+  const url = event.request.url;
+
+  // Never cache dynamic API requests, socket.io, or mutations
   if (
-    event.request.url.includes("/socket.io/") ||
-    event.request.url.includes("/api/") ||
+    url.includes("/socket.io/") ||
+    url.includes("/api/") ||
+    url.includes("/user/") ||
+    url.includes("/request/") ||
+    url.includes("/profile/") ||
+    url.includes("/chat/") ||
+    url.includes("/message/") ||
+    url.includes("/auth/") ||
+    url.includes("/uploads/") ||
     event.request.method !== "GET"
   ) {
     return;

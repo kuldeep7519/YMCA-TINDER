@@ -19,6 +19,18 @@ dotenv.config();
 const app = express();
 // Enable trust proxy for Nginx / reverse proxy deployment
 app.set("trust proxy", 1);
+
+// Disable ETags globally to prevent stale 304 Not Modified caching on dynamic dating APIs
+app.set("etag", false);
+
+// Prevent browser and proxy caching on dynamic campus API endpoints
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  next();
+});
+
 const server = http.createServer(app);
 
 // Initialize Socket.io real-time engine
