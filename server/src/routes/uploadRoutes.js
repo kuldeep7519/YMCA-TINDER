@@ -1,6 +1,6 @@
 import express from "express";
 import auth from "../middleware/auth.js";
-import { upload, uploadToCloudOrLocal } from "../utils/uploader.js";
+import { upload, uploadToCloudOrLocal, uploadChatImage } from "../utils/uploader.js";
 
 const uploadRouter = express.Router();
 
@@ -55,6 +55,34 @@ uploadRouter.post(
       });
     } catch (err) {
       res.status(500).json({ message: "Upload failed: " + err.message });
+    }
+  }
+);
+
+// 3. Chat photo upload (Preserves aspect ratio, returns secure URL)
+uploadRouter.post(
+  "/upload/chat-image",
+  auth,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No image file provided" });
+      }
+
+      const imageUrl = await uploadChatImage(
+        req.file.buffer,
+        req.file.originalname,
+        req
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Chat image uploaded successfully!",
+        imageUrl,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Image upload failed: " + err.message });
     }
   }
 );

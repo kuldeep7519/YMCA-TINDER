@@ -6,6 +6,7 @@ import SwipeCard from "../components/SwipeCard";
 import MatchModal from "../components/MatchModal";
 import FilterModal from "../components/FilterModal";
 import TeaserFeed from "../components/TeaserFeed";
+import DailyLimitModal from "../components/DailyLimitModal";
 import {
   RefreshCw,
   Sparkles,
@@ -25,6 +26,8 @@ const Feed = () => {
   const [matchedUser, setMatchedUser] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
+  const [swipeQuota, setSwipeQuota] = useState(null);
 
   const [filters, setFilters] = useState({
     gender: "all",
@@ -47,6 +50,9 @@ const Feed = () => {
 
       const res = await axiosClient.get("/user/feed", { params });
       dispatch(addFeed(res.data.data));
+      if (res.data.quota) {
+        setSwipeQuota(res.data.quota);
+      }
     } catch (err) {
       console.error("Failed to fetch feed:", err);
     } finally {
@@ -81,6 +87,16 @@ const Feed = () => {
   };
 
   const handleSwipe = async (status, targetUserId) => {
+    // If daily campus swipe limit reached on like/superlike, show limit modal
+    if (
+      (status === "interested" || status === "superlike") &&
+      swipeQuota &&
+      swipeQuota.remainingSwipes <= 0
+    ) {
+      setShowDailyLimitModal(true);
+      return;
+    }
+
     const currentCard = feed?.find((u) => u._id === targetUserId);
 
     // Optimistically remove card from deck
@@ -88,6 +104,14 @@ const Feed = () => {
 
     try {
       const res = await axiosClient.post(`/request/send/${status}/${targetUserId}`);
+
+      if (res.data?.remainingSwipes !== undefined) {
+        setSwipeQuota((prev) => ({
+          ...prev,
+          remainingSwipes: res.data.remainingSwipes,
+          dailyLimit: res.data.dailyLimit || 20,
+        }));
+      }
 
       if (status === "superlike") {
         setToastMessage(`You Super Liked ${currentCard?.firstName || "this student"}! ⭐ Campus Crush sent!`);
@@ -99,6 +123,10 @@ const Feed = () => {
 
       setTimeout(() => setToastMessage(null), 2500);
     } catch (err) {
+      if (err.response?.status === 429 || err.response?.data?.limitReached) {
+        setSwipeQuota((prev) => ({ ...prev, remainingSwipes: 0 }));
+        setShowDailyLimitModal(true);
+      }
       console.error("Error sending swipe:", err);
     }
   };
@@ -150,11 +178,40 @@ const Feed = () => {
         onClose={() => setMatchedUser(null)}
       />
 
+      {/* Daily Campus Swipe Limit Modal */}
+      <DailyLimitModal
+        isOpen={showDailyLimitModal}
+        onClose={() => setShowDailyLimitModal(false)}
+        dailyLimit={swipeQuota?.dailyLimit || 20}
+      />
+
       {/* Discovery Header Controls */}
       <div className="w-full max-w-sm sm:max-w-md flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
-          <Flame className="w-4 h-4 text-[#A855F7] fill-[#A855F7]" />
-          <span>Discover YMCA</span>
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <Flame className="w-4 h-4 text-[#A855F7] fill-[#A855F7]" />
+            <span>Discover</span>
+          </div>
+
+          {/* Daily Swipes Counter Badge */}
+          {swipeQuota && (
+            <button
+              onClick={() => {
+                if (swipeQuota.remainingSwipes <= 0) setShowDailyLimitModal(true);
+              }}
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border transition-all ${
+                swipeQuota.remainingSwipes === 0
+                  ? "bg-rose-500/20 border-rose-500/40 text-rose-300 cursor-pointer animate-pulse"
+                  : swipeQuota.remainingSwipes <= 5
+                  ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                  : "bg-purple-500/15 border-purple-500/30 text-purple-300"
+              }`}
+              title="Daily free campus swipes left for today (Resets at midnight)"
+            >
+              <Sparkles className="w-3 h-3 text-[#EC4899]" />
+              <span>{swipeQuota.remainingSwipes}/{swipeQuota.dailyLimit || 20} left</span>
+            </button>
+          )}
         </div>
 
         {/* Filter Toggle Button */}

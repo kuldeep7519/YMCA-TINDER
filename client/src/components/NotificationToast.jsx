@@ -1,24 +1,36 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { dismissToast, clearUnreadCount } from "../utils/notificationSlice";
-import { MessageCircle, X, Flame } from "lucide-react";
+import { X, Flame, ArrowRight } from "lucide-react";
 
 const NotificationToast = () => {
   const toast = useSelector((store) => store.notifications.toast);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const [isExiting, setIsExiting] = useState(false);
+
+  const handleClose = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      dispatch(dismissToast());
+      setIsExiting(false);
+    }, 200);
+  };
 
   useEffect(() => {
-    if (!toast) return;
+    if (!toast) {
+      setIsExiting(false);
+      return;
+    }
 
-    // Automatically dismiss toast after 5 seconds
+    setIsExiting(false);
     const timer = setTimeout(() => {
-      dispatch(dismissToast());
-    }, 5000);
+      handleClose();
+    }, 4500);
 
     return () => clearTimeout(timer);
-  }, [toast, dispatch]);
+  }, [toast]);
 
   if (!toast) return null;
 
@@ -33,46 +45,96 @@ const NotificationToast = () => {
     }
   };
 
+  const previewText =
+    toast.messageType === "audio" || toast.audioUrl
+      ? "🎤 Sent a voice note"
+      : toast.messageType === "image" || toast.imageUrl
+      ? (toast.text && toast.text !== "📷 Photo" ? `📷 ${toast.text}` : "📷 Sent a photo")
+      : toast.text || "Sent you a message";
+
   return (
-    <div className="fixed top-20 right-4 sm:right-6 z-50 max-w-sm w-full animate-slide-up shadow-2xl">
-      <div className="bg-[#111422]/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl p-4 shadow-purple-500/10 flex items-start gap-3 text-white">
-        {/* Pulsing Avatar/Icon */}
-        <div className="relative flex-shrink-0 mt-0.5">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] flex items-center justify-center text-white shadow-md shadow-purple-500/30">
-            <Flame className="w-5 h-5 fill-white" />
+    <div
+      onClick={handleReply}
+      className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] sm:w-auto sm:min-w-[360px] sm:max-w-md transition-all duration-200 select-none cursor-pointer ${
+        isExiting
+          ? "opacity-0 -translate-y-3 scale-95 pointer-events-none"
+          : "opacity-100 translate-y-0 scale-100 animate-slide-up"
+      }`}
+    >
+      <div className="relative overflow-hidden rounded-2xl bg-[#121528]/95 backdrop-blur-2xl border border-purple-500/35 hover:border-purple-400/60 p-3 sm:p-3.5 shadow-[0_16px_50px_rgba(0,0,0,0.75)] shadow-purple-500/10 transition-all duration-300 hover:scale-[1.01] active:scale-[0.99] group flex items-center justify-between gap-3 text-white">
+        {/* Ambient Top Glow */}
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-40 h-10 bg-purple-500/25 blur-xl pointer-events-none" />
+
+        {/* Sender Avatar with App Badge */}
+        <div className="relative flex-shrink-0">
+          <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-purple-500/40 group-hover:ring-purple-400 transition-all shadow-md">
+            {toast.senderPhoto ? (
+              <img
+                src={toast.senderPhoto}
+                alt={toast.senderName || "Sender"}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-tr from-purple-600 via-pink-600 to-rose-600 flex items-center justify-center text-white font-black text-sm">
+                {(toast.senderName || "U").charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
-          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-pink-400 border-2 border-[#111422] rounded-full animate-ping" />
-          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-pink-400 border-2 border-[#111422] rounded-full" />
+          {/* Flame badge */}
+          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#A855F7] to-[#EC4899] flex items-center justify-center ring-2 ring-[#121528] shadow-sm">
+            <Flame className="w-2.5 h-2.5 fill-white text-white" />
+          </div>
         </div>
 
-        {/* Message Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <h4 className="text-xs font-bold text-white truncate">
-              {toast.senderName || "New Match"} sent you a message!
+        {/* Sender & Message Content */}
+        <div className="flex-1 min-w-0 pr-1">
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-xs sm:text-sm font-black text-white truncate">
+              {toast.senderName || "New Match"}
             </h4>
-            <button
-              onClick={() => dispatch(dismissToast())}
-              className="text-slate-400 hover:text-white p-0.5 rounded-lg transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <span className="text-[10px] text-purple-300/80 font-medium flex-shrink-0">
+              • Just now
+            </span>
           </div>
 
-          <p className="text-xs text-slate-300 mt-1 line-clamp-2 italic bg-white/5 p-2 rounded-xl border border-white/5">
-            "{toast.text}"
+          <p className="text-xs text-slate-300 truncate mt-0.5 font-medium leading-snug">
+            {previewText}
           </p>
-
-          <div className="mt-2.5 flex items-center justify-end gap-2">
-            <button
-              onClick={handleReply}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] text-white text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-sm shadow-purple-500/20"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              Reply Now
-            </button>
-          </div>
         </div>
+
+        {/* Right Action: Reply Pill & Close Button */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleReply();
+            }}
+            className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:opacity-95 text-white font-bold text-[11px] shadow-md shadow-purple-500/25 flex items-center gap-1 active:scale-95 transition-all"
+            title="Open Chat"
+          >
+            <span>Reply</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClose();
+            }}
+            className="w-7 h-7 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            title="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Auto-Dismiss Progress Bar along bottom */}
+        <div
+          className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] rounded-b-2xl pointer-events-none"
+          style={{ animation: "toastProgress 4.5s linear forwards" }}
+        />
       </div>
     </div>
   );

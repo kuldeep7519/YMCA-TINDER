@@ -91,6 +91,14 @@ const userSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    dailySwipesCount: {
+      type: Number,
+      default: 0,
+    },
+    lastSwipeDate: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { timestamps: true }
 );

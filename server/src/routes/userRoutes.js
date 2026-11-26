@@ -5,6 +5,7 @@ import User from "../models/userModel.js";
 import Block from "../models/blockModel.js";
 import Report from "../models/reportModel.js";
 import Chat from "../models/chatModel.js";
+import { DAILY_SWIPE_LIMIT, checkAndResetDailySwipes } from "./connectionRoutes.js";
 
 const userRouter = express.Router();
 
@@ -288,19 +289,55 @@ userRouter.get("/user/feed", auth, async (req, res) => {
       }
     }
 
-    const users = await User.find(query).select([
-      "firstName",
-      "lastName",
-      "photoUrl",
-      "age",
-      "gender",
-      "branch",
-      "year",
-      "bio",
-      "interest",
-    ]);
+    const users = await User.find(query)
+      .select([
+        "firstName",
+        "lastName",
+        "photoUrl",
+        "age",
+        "gender",
+        "branch",
+        "year",
+        "bio",
+        "interest",
+      ])
+      .lean();
 
-    res.json({ data: users });
+    // Fisher-Yates (Knuth) Shuffle algorithm for fair, randomized campus discovery
+    const shuffledUsers = [...users];
+    for (let i = shuffledUsers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledUsers[i], shuffledUsers[j]] = [shuffledUsers[j], shuffledUsers[i]];
+    }
+
+    // Smart Campus Sorting: Profiles with bio/photo appear first (shuffled), followed by basic profiles
+    const completeProfiles = [];
+    const basicProfiles = [];
+
+    shuffledUsers.forEach((u) => {
+      const hasBio = Boolean(u.bio && u.bio.trim().length > 0);
+      const hasPhoto = Boolean(u.photoUrl && typeof u.photoUrl === "string" && u.photoUrl.trim().length > 0);
+      if (hasBio || hasPhoto) {
+        completeProfiles.push(u);
+      } else {
+        basicProfiles.push(u);
+      }
+    });
+
+    const finalFeed = [...completeProfiles, ...basicProfiles];
+
+    checkAndResetDailySwipes(loggedinuser);
+    await loggedinuser.save();
+    const remainingSwipes = Math.max(0, DAILY_SWIPE_LIMIT - (loggedinuser.dailySwipesCount || 0));
+
+    res.json({
+      data: finalFeed,
+      quota: {
+        dailyLimit: DAILY_SWIPE_LIMIT,
+        remainingSwipes,
+        swipesUsed: loggedinuser.dailySwipesCount || 0,
+      },
+    });
   } catch (err) {
     res.status(401).send(err.message);
   }

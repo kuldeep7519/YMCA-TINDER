@@ -70,3 +70,51 @@ export const uploadToCloudOrLocal = async (fileBuffer, originalname, req) => {
     return `${protocol}://${host}/uploads/${filename}`;
   }
 };
+
+// Dedicated chat image uploader (Preserves aspect ratio, no face cropping, handles memes/photos)
+export const uploadChatImage = async (fileBuffer, originalname, req) => {
+  const isCloudinaryConfigured =
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET;
+
+  if (isCloudinaryConfigured) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "ymca-chat-photos",
+          transformation: [
+            { width: 1400, crop: "limit", quality: "auto" },
+          ],
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result.secure_url);
+        }
+      );
+      stream.end(fileBuffer);
+    });
+  } else {
+    // Local storage fallback
+    const uploadsDir = path.resolve("public/uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const cleanExt = path.extname(originalname) || ".jpg";
+    const filename = `chat-${Date.now()}-${Math.round(Math.random() * 1e9)}${cleanExt}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    await fs.promises.writeFile(filePath, fileBuffer);
+
+    const host = req.get("host");
+    const protocol = req.protocol;
+    return `${protocol}://${host}/uploads/${filename}`;
+  }
+};

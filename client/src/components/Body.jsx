@@ -6,7 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { addUser } from "../utils/userSlice";
 import { addNotification, setOnlineUsers } from "../utils/notificationSlice";
 import { addRequests } from "../utils/requestSlice";
-import { addConnections } from "../utils/connectionSlice";
+import { addConnections, removeConnection } from "../utils/connectionSlice";
 import { createSocketConnection } from "../utils/socket";
 import { playNotificationSound } from "../utils/sound";
 import NotificationToast from "./NotificationToast";
@@ -80,6 +80,9 @@ const Body = () => {
 
     // Receive message notifications from any match while browsing anywhere in the app
     socket.on("newNotification", (data) => {
+      if (window.location.pathname === `/chat/${data?.senderId}`) {
+        return;
+      }
       playNotificationSound();
       dispatch(addNotification(data));
     });
@@ -95,10 +98,22 @@ const Body = () => {
       fetchBadgeCounts();
     });
 
+    // Real-time notification when an unmatch occurs
+    socket.on("userUnmatched", ({ unmatcherId, targetUserId }) => {
+      const otherId =
+        unmatcherId?.toString() === user._id?.toString()
+          ? targetUserId
+          : unmatcherId;
+      if (otherId) {
+        dispatch(removeConnection(otherId.toString()));
+      }
+    });
+
     return () => {
       socket.off("newNotification");
       socket.off("onlineUsersList");
       socket.off("newRequestNotification");
+      socket.off("userUnmatched");
       socket.disconnect();
     };
   }, [user?._id, dispatch]);

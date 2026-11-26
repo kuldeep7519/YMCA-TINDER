@@ -61,14 +61,19 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Serve locally uploaded files statically
 app.use("/uploads", express.static(path.resolve("public/uploads")));
 
-// Routes
-app.use("/", authRouter);
-app.use("/", ProfileRoute);
-app.use("/", connectionRouter);
-app.use("/", userRouter);
-app.use("/", chatRouter);
-app.use("/", uploadRouter);
-app.use("/", adminRouter);
+// Routes - Support both root `/` and `/api` prefix for seamless production reverse proxying (Nginx/Render/Vercel)
+const mountRoutes = (basePath = "") => {
+  app.use(basePath, authRouter);
+  app.use(basePath, ProfileRoute);
+  app.use(basePath, connectionRouter);
+  app.use(basePath, userRouter);
+  app.use(basePath, chatRouter);
+  app.use(basePath, uploadRouter);
+  app.use(basePath, adminRouter);
+};
+
+mountRoutes("");
+mountRoutes("/api");
 
 // Bulletproof Crash Guards - prevents the server process from crashing on unhandled errors
 process.on("unhandledRejection", (reason, promise) => {
@@ -80,10 +85,11 @@ process.on("uncaughtException", (err) => {
 });
 
 // Connect DB first, then start HTTP + Socket.io server
+const PORT = process.env.PORT || 7777;
 connectDB()
   .then(() => {
-    server.listen(process.env.PORT, () => {
-      console.log(`🚀 Server listening on port ${process.env.PORT}`);
+    server.listen(PORT, () => {
+      console.log(`🚀 Server listening on port ${PORT}`);
     });
   })
   .catch((err) => {

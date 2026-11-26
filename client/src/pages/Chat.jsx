@@ -9,8 +9,6 @@ import { removeConnection, updateConnection, addConnections } from "../utils/con
 import ReportModal from "../components/ReportModal";
 import {
   ArrowLeft,
-  Phone,
-  Video,
   Info,
   Send,
   Heart,
@@ -37,6 +35,11 @@ import {
   Pause,
   Volume2,
   Zap,
+  ChevronDown,
+  Image as ImageIcon,
+  Maximize2,
+  Download,
+  Loader2,
 } from "lucide-react";
 
 const ICEBREAKERS = [
@@ -425,6 +428,8 @@ const Chat = () => {
   const [replyingTo, setReplyingTo] = useState(null);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState(null);
   const [activeMoreMsgId, setActiveMoreMsgId] = useState(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null);
+  const highlightTimerRef = useRef(null);
 
   // Block & Unblock state
   const [isBlockedByMe, setIsBlockedByMe] = useState(false);
@@ -455,6 +460,11 @@ const Chat = () => {
 
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const prevMessagesCountRef = useRef(0);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [newMessagesWhileScrolled, setNewMessagesWhileScrolled] = useState(0);
   const typingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
 
@@ -466,6 +476,13 @@ const Chat = () => {
   const audioChunksRef = useRef([]);
   const audioStreamRef = useRef(null);
   const recordingTimerRef = useRef(null);
+
+  // Chat Photo / Image Attachment State
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState(null);
+  const imageInputRef = useRef(null);
 
   // Streaks & Vibe Meter State
   const [chatStreak, setChatStreak] = useState(0);
@@ -490,15 +507,27 @@ const Chat = () => {
     prevVibeScoreRef.current = vibeScore;
   }, [vibeScore]);
 
-  // Clean up audio tracks & timers on unmount
+  // Clean up audio tracks, timers & highlight on unmount
   useEffect(() => {
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
+
+  // Close lightbox on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && viewingPhotoUrl) {
+        setViewingPhotoUrl(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewingPhotoUrl]);
 
   // Dismiss floating popups on outside click
   useEffect(() => {
@@ -560,19 +589,24 @@ const Chat = () => {
     const socket = createSocketConnection();
     socketRef.current = socket;
 
+    socket.emit("registerUser", loggedInUser._id?.toString());
     socket.emit("joinChat", {
-      userId: loggedInUser._id,
-      targetUserId,
+      userId: loggedInUser._id?.toString(),
+      targetUserId: targetUserId?.toString(),
     });
 
     socket.emit("markMessagesRead", {
-      userId: loggedInUser._id,
-      targetUserId,
+      userId: loggedInUser._id?.toString(),
+      targetUserId: targetUserId?.toString(),
     });
 
     // Listen for incoming messages with ID deduplication
     const handleMessageReceived = (newMsg) => {
       if (!isSubscribed) return;
+
+      const senderStr = (typeof newMsg.senderId === "object" ? newMsg.senderId?._id : newMsg.senderId)?.toString();
+      const targetStr = targetUserId?.toString();
+      const myIdStr = loggedInUser?._id?.toString();
 
       setChatMessages((prev) => {
         const msgId = newMsg._id?.toString();
@@ -583,13 +617,12 @@ const Chat = () => {
         return [...prev, newMsg];
       });
 
-      if (
-        newMsg.senderId === targetUserId ||
-        newMsg.senderId?._id === targetUserId
-      ) {
+      // If the incoming message is from the other user, we are currently viewing this chat,
+      // so immediately notify the server to mark it as read!
+      if (senderStr === targetStr) {
         socket.emit("markMessagesRead", {
-          userId: loggedInUser._id,
-          targetUserId,
+          userId: myIdStr,
+          targetUserId: targetStr,
         });
       }
     };
@@ -597,14 +630,14 @@ const Chat = () => {
     // Typing indicators
     const handleUserTyping = ({ userId }) => {
       if (!isSubscribed) return;
-      if (userId === targetUserId) {
+      if (userId?.toString() === targetUserId?.toString()) {
         setIsOtherTyping(true);
       }
     };
 
     const handleUserStoppedTyping = ({ userId }) => {
       if (!isSubscribed) return;
-      if (userId === targetUserId) {
+      if (userId?.toString() === targetUserId?.toString()) {
         setIsOtherTyping(false);
       }
     };
@@ -612,13 +645,12 @@ const Chat = () => {
     // Read receipts
     const handleMessagesMarkedRead = ({ readerId }) => {
       if (!isSubscribed) return;
-      if (readerId === targetUserId) {
+      if (readerId?.toString() === targetUserId?.toString()) {
         setChatMessages((prev) =>
           prev.map((m) => {
-            const isMine =
-              (typeof m.senderId === "object" ? m.senderId?._id : m.senderId) ===
-              loggedInUser._id;
-            return isMine ? { ...m, isRead: true } : m;
+            const senderStr = (typeof m.senderId === "object" ? m.senderId?._id : m.senderId)?.toString();
+            const myIdStr = loggedInUser?._id?.toString();
+            return senderStr === myIdStr ? { ...m, isRead: true } : m;
           })
         );
       }
@@ -667,6 +699,29 @@ const Chat = () => {
       }
     };
 
+    // Real-time unmatch notification: immediately navigate away from chat
+    const handleUserUnmatched = ({ unmatcherId, targetUserId: unmatchTargetId }) => {
+      if (!isSubscribed) return;
+      const otherId =
+        unmatcherId?.toString() === loggedInUser._id?.toString()
+          ? unmatchTargetId?.toString()
+          : unmatcherId?.toString();
+
+      if (!otherId || otherId === targetUserId?.toString()) {
+        dispatch(removeConnection(targetUserId));
+        setToastMessage("This connection has ended. You have been unmatched.");
+        setTimeout(() => {
+          navigate("/matches");
+        }, 1200);
+      }
+    };
+
+    const handleErrorMessage = (msg) => {
+      if (!isSubscribed) return;
+      setToastMessage(msg || "Cannot send message.");
+      setTimeout(() => setToastMessage(null), 3000);
+    };
+
     socket.on("messageReceived", handleMessageReceived);
     socket.on("messageReacted", handleMessageReacted);
     socket.on("messageUnsent", handleMessageUnsent);
@@ -676,6 +731,8 @@ const Chat = () => {
     socket.on("userTyping", handleUserTyping);
     socket.on("userStoppedTyping", handleUserStoppedTyping);
     socket.on("messagesMarkedRead", handleMessagesMarkedRead);
+    socket.on("userUnmatched", handleUserUnmatched);
+    socket.on("errorMessage", handleErrorMessage);
 
     // Fetch message history asynchronously
     const fetchHistory = async () => {
@@ -703,6 +760,11 @@ const Chat = () => {
         }
       } catch (err) {
         console.error("Failed to load chat history:", err);
+        if (err.response?.status === 403) {
+          dispatch(removeConnection(targetUserId));
+          setToastMessage("You are no longer connected with this user.");
+          setTimeout(() => navigate("/matches"), 1200);
+        }
         if (isSubscribed) setChatMessages([]);
       } finally {
         if (isSubscribed) setLoadingChat(false);
@@ -722,18 +784,82 @@ const Chat = () => {
       socket.off("userTyping", handleUserTyping);
       socket.off("userStoppedTyping", handleUserStoppedTyping);
       socket.off("messagesMarkedRead", handleMessagesMarkedRead);
+      socket.off("userUnmatched", handleUserUnmatched);
+      socket.off("errorMessage", handleErrorMessage);
       socket.emit("leaveChat", {
         userId: loggedInUser._id,
         targetUserId,
       });
       setIsOtherTyping(false);
+      prevMessagesCountRef.current = 0;
+      setNewMessagesWhileScrolled(0);
+      setShowScrollBottom(false);
+      isNearBottomRef.current = true;
     };
   }, [targetUserId, loggedInUser?._id]);
 
-  // Auto-scroll to bottom of conversation
+  // Scroll to bottom helper
+  const scrollToBottom = (behavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    setShowScrollBottom(false);
+    setNewMessagesWhileScrolled(0);
+    isNearBottomRef.current = true;
+  };
+
+  // Track scroll position: if user is scrolled up reading chats, DO NOT auto-scroll down
+  const handleChatScroll = () => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isNear = distanceFromBottom < 120;
+
+    isNearBottomRef.current = isNear;
+
+    if (isNear) {
+      setShowScrollBottom(false);
+      setNewMessagesWhileScrolled(0);
+    } else {
+      setShowScrollBottom(true);
+    }
+  };
+
+  // Smart auto-scroll on new messages:
+  // - On initial load: scroll to bottom instantly
+  // - On new message: ONLY scroll if user is near bottom or if sent by logged in user
+  // - If user is scrolled up reading older chats: preserve scroll and show badge
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, isOtherTyping]);
+    const isInitialLoad = prevMessagesCountRef.current === 0 && chatMessages.length > 0;
+    const isNewMessageAdded = chatMessages.length > prevMessagesCountRef.current;
+    prevMessagesCountRef.current = chatMessages.length;
+
+    if (isInitialLoad) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      isNearBottomRef.current = true;
+      setShowScrollBottom(false);
+      return;
+    }
+
+    if (isNewMessageAdded) {
+      const lastMsg = chatMessages[chatMessages.length - 1];
+      const senderIdStr = (typeof lastMsg?.senderId === "object" ? lastMsg?.senderId?._id : lastMsg?.senderId)?.toString();
+      const isSentByMe = senderIdStr === loggedInUser?._id?.toString();
+
+      if (isSentByMe || isNearBottomRef.current) {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      } else {
+        setNewMessagesWhileScrolled((prev) => prev + 1);
+        setShowScrollBottom(true);
+      }
+    }
+  }, [chatMessages, loggedInUser?._id]);
+
+  // When typing indicator triggers: NEVER pull/yank down if user is reading past chats!
+  useEffect(() => {
+    if (isOtherTyping && isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [isOtherTyping]);
 
   // Handle typing debounce
   const handleInputChange = (e) => {
@@ -759,14 +885,46 @@ const Chat = () => {
     }, 1500);
   };
 
-  // Send text message with duplicate emission lock & reply context
-  const handleSendMessage = (e) => {
-    e?.preventDefault();
-    if (!inputMessage.trim() || !targetUserId || !socketRef.current || sendingMessage) return;
+  // Image attachment handlers
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const textToSend = inputMessage.trim();
-    setInputMessage("");
-    setSendingMessage(true);
+    if (!file.type.startsWith("image/")) {
+      setToastMessage("Please select an image file (JPEG, PNG, WEBP, GIF)");
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setToastMessage("Image size cannot exceed 10MB");
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    setSelectedImage(file);
+    const preview = URL.createObjectURL(file);
+    setImagePreviewUrl(preview);
+    e.target.value = "";
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleCancelImage = () => {
+    if (imagePreviewUrl) {
+      try {
+        URL.revokeObjectURL(imagePreviewUrl);
+      } catch (e) {}
+    }
+    setSelectedImage(null);
+    setImagePreviewUrl(null);
+  };
+
+  // Send message (text or photo) with duplicate emission lock & reply context
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    if ((!inputMessage.trim() && !selectedImage) || !targetUserId || !socketRef.current || sendingMessage) return;
 
     const roomId = [loggedInUser._id.toString(), targetUserId.toString()].sort().join("_");
 
@@ -776,11 +934,73 @@ const Chat = () => {
       userId: loggedInUser._id,
     });
 
+    // Case 1: Photo attachment send
+    if (selectedImage) {
+      const imageFile = selectedImage;
+      const captionText = inputMessage.trim();
+      const currentReply = replyingTo;
+
+      setSendingMessage(true);
+      setUploadingImage(true);
+      setInputMessage("");
+      handleCancelImage();
+      setReplyingTo(null);
+
+      try {
+        const formData = new FormData();
+        formData.append("image", imageFile);
+
+        const res = await axiosClient.post("/upload/chat-image", formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+
+        const uploadedUrl = res.data?.imageUrl;
+        if (!uploadedUrl) {
+          throw new Error("No image URL returned from server");
+        }
+
+        socketRef.current.emit("sendMessage", {
+          userId: loggedInUser._id,
+          targetUserId,
+          text: captionText || "📷 Photo",
+          imageUrl: uploadedUrl,
+          messageType: "image",
+          senderName: loggedInUser.firstName,
+          senderPhoto: loggedInUser.photoUrl,
+          replyTo: currentReply
+            ? {
+                messageId: currentReply._id,
+                text: currentReply.text,
+                senderName: currentReply.senderName,
+              }
+            : null,
+        });
+
+        setTimeout(() => scrollToBottom("smooth"), 100);
+      } catch (err) {
+        console.error("Chat image upload failed:", err);
+        setToastMessage("Failed to send photo. Please try again.");
+        setTimeout(() => setToastMessage(null), 3500);
+      } finally {
+        setSendingMessage(false);
+        setUploadingImage(false);
+      }
+      return;
+    }
+
+    // Case 2: Standard text message
+    const textToSend = inputMessage.trim();
+    setInputMessage("");
+    setSendingMessage(true);
+
     socketRef.current.emit("sendMessage", {
       userId: loggedInUser._id,
       targetUserId,
       text: textToSend,
       senderName: loggedInUser.firstName,
+      senderPhoto: loggedInUser.photoUrl,
       replyTo: replyingTo
         ? {
             messageId: replyingTo._id,
@@ -795,7 +1015,8 @@ const Chat = () => {
 
     setTimeout(() => {
       setSendingMessage(false);
-    }, 300);
+      scrollToBottom("smooth");
+    }, 100);
   };
 
   // Voice Note Handlers
@@ -891,6 +1112,7 @@ const Chat = () => {
           audioUrl: base64Audio,
           audioDuration: recordedDuration,
           senderName: loggedInUser.firstName,
+          senderPhoto: loggedInUser.photoUrl,
           replyTo: replyingTo
             ? {
                 messageId: replyingTo._id,
@@ -904,6 +1126,7 @@ const Chat = () => {
         setIsRecording(false);
         setRecordingSeconds(0);
         audioChunksRef.current = [];
+        setTimeout(() => scrollToBottom("smooth"), 50);
       };
     };
 
@@ -974,7 +1197,11 @@ const Chat = () => {
 
   // Copy message text to clipboard
   const handleCopyText = (msg) => {
-    const textToCopy = msg.audioUrl ? "🎤 [Voice note]" : msg?.text;
+    const textToCopy = msg.imageUrl
+      ? (msg.text && msg.text !== "📷 Photo" ? msg.text : msg.imageUrl)
+      : msg.audioUrl
+      ? "🎤 [Voice note]"
+      : msg?.text;
     if (!textToCopy) return;
     navigator.clipboard?.writeText(textToCopy);
     setActiveMoreMsgId(null);
@@ -986,7 +1213,9 @@ const Chat = () => {
   const handleStartReply = (msg, isSenderMe) => {
     setReplyingTo({
       _id: msg._id,
-      text: msg.text,
+      text: msg.imageUrl
+        ? (msg.text && msg.text !== "📷 Photo" ? `📷 ${msg.text}` : "📷 Photo")
+        : msg.text || (msg.audioUrl ? "🎤 Voice note" : "Message"),
       senderName: isSenderMe ? "You" : targetUser?.firstName || "Student",
     });
     setActiveMoreMsgId(null);
@@ -994,6 +1223,41 @@ const Chat = () => {
     setTimeout(() => {
       messageInputRef.current?.focus();
     }, 50);
+  };
+
+  // Scroll smoothly to quoted message and flash highlight it (like WhatsApp/Telegram)
+  const handleScrollToMessage = (targetMsgId, fallbackText) => {
+    let targetEl = null;
+    let foundId = null;
+
+    if (targetMsgId) {
+      const targetIdStr = (typeof targetMsgId === "object" ? targetMsgId?._id || targetMsgId : targetMsgId)?.toString();
+      if (targetIdStr) {
+        targetEl = document.getElementById(`chat-msg-${targetIdStr}`);
+        if (targetEl) foundId = targetIdStr;
+      }
+    }
+
+    if (!targetEl && fallbackText) {
+      const matched = chatMessages.find((m) => m.text === fallbackText);
+      if (matched && matched._id) {
+        const matchedIdStr = matched._id.toString();
+        targetEl = document.getElementById(`chat-msg-${matchedIdStr}`);
+        if (targetEl) foundId = matchedIdStr;
+      }
+    }
+
+    if (targetEl && foundId) {
+      targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedMsgId(foundId);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setHighlightedMsgId(null);
+      }, 2200);
+    } else {
+      setToastMessage("Quoted message is not visible in current chat history.");
+      setTimeout(() => setToastMessage(null), 2500);
+    }
   };
 
   // Send quick icebreaker or heart reaction with debounce lock
@@ -1006,11 +1270,13 @@ const Chat = () => {
       targetUserId,
       text,
       senderName: loggedInUser.firstName,
+      senderPhoto: loggedInUser.photoUrl,
     });
 
     setTimeout(() => {
       setSendingMessage(false);
-    }, 300);
+      scrollToBottom("smooth");
+    }, 100);
   };
 
   // Change Chat Theme
@@ -1050,16 +1316,6 @@ const Chat = () => {
   const handleSelectWallpaperIntensity = (intensity) => {
     setWallpaperIntensity(intensity);
     localStorage.setItem("ymca_wallpaper_intensity", intensity);
-  };
-
-  // Call simulation triggers
-  const handleTriggerCall = (type) => {
-    setToastMessage(
-      type === "video"
-        ? `Video calling with ${targetUser?.firstName || "match"} is coming in the next update! 🎥`
-        : `Voice calling with ${targetUser?.firstName || "match"} is coming in the next update! 📞`
-    );
-    setTimeout(() => setToastMessage(null), 3500);
   };
 
   // Block user
@@ -1258,7 +1514,11 @@ const Chat = () => {
                 )}
               </div>
               <p className="text-[11px] text-slate-400 truncate flex items-center gap-1.5">
-                {isUserOnline ? (
+                {isOtherTyping ? (
+                  <span className="text-purple-400 font-bold animate-pulse flex items-center gap-1">
+                    typing...
+                  </span>
+                ) : isUserOnline ? (
                   <span className="text-emerald-400 font-semibold">Active now</span>
                 ) : (
                   <span>Offline</span>
@@ -1294,21 +1554,6 @@ const Chat = () => {
               />
             </div>
           </button>
-          <button
-            onClick={() => handleTriggerCall("audio")}
-            className="w-9 h-9 rounded-full hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-            title="Audio Call"
-          >
-            <Phone className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => handleTriggerCall("video")}
-            className="w-9 h-9 rounded-full hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-            title="Video Call"
-          >
-            <Video className="w-5 h-5" />
-          </button>
 
           <button
             onClick={() => setShowThemeModal(true)}
@@ -1342,7 +1587,12 @@ const Chat = () => {
       {/* ======================================================== */}
       {/* CHAT MESSAGES STREAM                                      */}
       {/* ======================================================== */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative z-10">
+      <div className="flex-1 relative min-h-0 overflow-hidden flex flex-col z-10">
+        <div
+          ref={chatContainerRef}
+          onScroll={handleChatScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-4 relative"
+        >
         {/* Match Intro Card */}
         {targetUser && (
           <div className="text-center py-6 space-y-3 max-w-sm mx-auto">
@@ -1404,18 +1654,22 @@ const Chat = () => {
         {/* Message Bubbles */}
         {!loadingChat &&
           chatMessages.map((msg, index) => {
-            const isSenderMe =
-              (typeof msg.senderId === "object" ? msg.senderId?._id : msg.senderId) ===
-              loggedInUser._id;
+            const senderIdStr = (typeof msg.senderId === "object" ? msg.senderId?._id : msg.senderId)?.toString();
+            const myIdStr = loggedInUser?._id?.toString();
+            const isSenderMe = senderIdStr === myIdStr;
             const hasReactions = msg.reactions && msg.reactions.length > 0;
             const isMenuOpen = activeReactionMsgId === msg._id || activeMoreMsgId === msg._id;
+            const isHighlighted = Boolean(
+              highlightedMsgId && msg._id && highlightedMsgId === msg._id.toString()
+            );
 
             return (
               <div
                 key={msg._id || index}
-                className={`group relative flex items-center gap-1.5 message-interactive-menu ${
+                id={msg._id ? `chat-msg-${msg._id.toString()}` : undefined}
+                className={`group relative flex items-center gap-1.5 message-interactive-menu transition-all duration-300 ${
                   isSenderMe ? "justify-end flex-row" : "justify-start flex-row"
-                } ${hasReactions ? "mb-3" : ""}`}
+                } ${hasReactions ? "mb-3" : ""} ${isHighlighted ? "z-20" : ""}`}
               >
                 {/* For Sender: Action buttons appear on the LEFT of bubble */}
                 {isSenderMe && (
@@ -1554,25 +1808,62 @@ const Chat = () => {
 
                   {/* Main Bubble Content */}
                   <div
-                    className={`rounded-2xl px-4 py-2.5 text-xs shadow-md transition-all duration-300 ${
+                    className={`rounded-2xl px-4 py-2.5 text-xs shadow-md transition-all duration-500 ${
                       isSenderMe
                         ? `${currentTheme.myBubble} rounded-br-xs`
                         : `${currentTheme.theirBubble} rounded-bl-xs`
+                    } ${
+                      isHighlighted
+                        ? "ring-2 ring-purple-400 ring-offset-2 ring-offset-[#0B0D17] scale-[1.03] shadow-2xl shadow-purple-500/50 brightness-110"
+                        : ""
                     }`}
                   >
                     {/* Threaded Reply Quote preview inside bubble */}
                     {msg.replyTo && (
                       <div
-                        className={`mb-2 px-2.5 py-1.5 rounded-xl bg-black/25 border-l-2 ${currentTheme.replyQuoteBorder} text-[11px]`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleScrollToMessage(msg.replyTo.messageId, msg.replyTo.text);
+                        }}
+                        className={`mb-2 px-2.5 py-1.5 rounded-xl bg-black/30 hover:bg-black/50 border-l-2 ${currentTheme.replyQuoteBorder} text-[11px] cursor-pointer transition-all duration-200 select-none group/quote active:scale-[0.99]`}
+                        title="Tap to jump to quoted message"
                       >
-                        <p className={`font-bold text-[10px] ${currentTheme.replyQuoteText}`}>
-                          {msg.replyTo.senderName || "Message"}
-                        </p>
+                        <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                          <p className={`font-bold text-[10px] ${currentTheme.replyQuoteText} truncate`}>
+                            {msg.replyTo.senderName || "Message"}
+                          </p>
+                          <span className="text-[9px] text-white/50 group-hover/quote:text-white/90 transition-colors flex items-center gap-0.5">
+                            Jump ↗
+                          </span>
+                        </div>
                         <p className="truncate text-white/80 line-clamp-1">{msg.replyTo.text}</p>
                       </div>
                     )}
 
-                    {msg.messageType === "audio" || msg.audioUrl ? (
+                    {msg.messageType === "image" || msg.imageUrl ? (
+                      <div className="space-y-1.5">
+                        <div
+                          onClick={() => setViewingPhotoUrl(msg.imageUrl)}
+                          className="relative rounded-xl overflow-hidden cursor-pointer group max-w-[260px] sm:max-w-[320px] border border-white/10 shadow-md bg-black/40 hover:opacity-95 transition-all"
+                        >
+                          <img
+                            src={msg.imageUrl}
+                            alt="Chat attachment"
+                            className="w-full h-auto max-h-[340px] object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-2">
+                            <span className="text-[10px] text-white/90 font-medium">Tap to view</span>
+                            <Maximize2 className="w-3.5 h-3.5 text-white/90" />
+                          </div>
+                        </div>
+                        {msg.text && msg.text !== "📷 Photo" && (
+                          <p className="leading-relaxed whitespace-pre-wrap text-xs sm:text-sm pt-0.5 px-0.5">
+                            {msg.text}
+                          </p>
+                        )}
+                      </div>
+                    ) : msg.messageType === "audio" || msg.audioUrl ? (
                       <VoiceNotePlayer
                         msg={msg}
                         isSenderMe={isSenderMe}
@@ -1593,12 +1884,17 @@ const Chat = () => {
                             })
                           : "Just now"}
                       </span>
-                      {isSenderMe &&
-                        (msg.isRead ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-sky-300" title="Seen" />
-                        ) : (
-                          <Check className="w-3.5 h-3.5 text-white/70" title="Sent" />
-                        ))}
+                      {isSenderMe && (
+                        <span className="inline-flex items-center ml-0.5">
+                          {msg.isRead ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-[#38bdf8] drop-shadow-[0_0_2px_rgba(56,189,248,0.5)]" title="Read" />
+                          ) : isUserOnline ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-white/80" title="Delivered (Online)" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5 text-white/60" title="Sent (Offline)" />
+                          )}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1693,7 +1989,39 @@ const Chat = () => {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Floating Scroll to Bottom / New Message Button */}
+        {showScrollBottom && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom("smooth")}
+            className="absolute bottom-3 right-4 z-30 flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#161928]/95 hover:bg-[#1E2338] border border-purple-500/40 text-white text-xs font-semibold shadow-xl shadow-black/70 backdrop-blur-md transition-all hover:scale-105 active:scale-95 group animate-fade-in"
+            title="Scroll to bottom"
+          >
+            {isOtherTyping ? (
+              <span className="flex items-center gap-1.5 text-purple-300">
+                <span className="text-[11px] font-bold">{targetUser?.firstName || "Match"} is typing</span>
+                <span className="flex gap-0.5 items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899] animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899] animate-bounce [animation-delay:-0.15s]"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899] animate-bounce [animation-delay:-0.3s]"></span>
+                </span>
+              </span>
+            ) : newMessagesWhileScrolled > 0 ? (
+              <span className="flex items-center gap-1.5 text-pink-300 font-bold">
+                <span className="w-4 h-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] flex items-center justify-center font-extrabold shadow-sm">
+                  {newMessagesWhileScrolled}
+                </span>
+                <span className="text-[11px]">New message</span>
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-300 font-medium">Latest</span>
+            )}
+            <ChevronDown className="w-4 h-4 text-purple-400 group-hover:translate-y-0.5 transition-transform" />
+          </button>
+        )}
       </div>
 
       {/* ======================================================== */}
@@ -1704,13 +2032,18 @@ const Chat = () => {
       >
         {/* Threaded Reply Quote preview banner */}
         {replyingTo && (
-          <div className="px-4 py-2 bg-[#141724] border-b border-white/10 flex items-center justify-between text-xs animate-slide-up">
+          <div
+            onClick={() => handleScrollToMessage(replyingTo._id, replyingTo.text)}
+            className="px-4 py-2 bg-[#141724] hover:bg-[#1a1e30] border-b border-white/10 flex items-center justify-between text-xs animate-slide-up cursor-pointer transition-colors"
+            title="Click to view quoted message"
+          >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-1 h-7 rounded-full bg-gradient-to-b from-purple-500 to-pink-500 flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-purple-300 flex items-center gap-1">
                   <Reply className="w-3 h-3 text-purple-400" />
                   Replying to {replyingTo.senderName}
+                  <span className="text-[9px] text-white/40 ml-1 font-normal">tap to view</span>
                 </p>
                 <p className="text-[11px] text-slate-400 truncate max-w-xs sm:max-w-md">
                   {replyingTo.text}
@@ -1719,7 +2052,10 @@ const Chat = () => {
             </div>
             <button
               type="button"
-              onClick={() => setReplyingTo(null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setReplyingTo(null);
+              }}
               className="w-7 h-7 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center flex-shrink-0 transition-colors"
               title="Cancel reply"
             >
@@ -1803,46 +2139,115 @@ const Chat = () => {
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+            <>
+              {/* Hidden file input for photo upload */}
               <input
-                ref={messageInputRef}
-                type="text"
-                placeholder={replyingTo ? `Replying to ${replyingTo.senderName}...` : "Message..."}
-                value={inputMessage}
-                onChange={handleInputChange}
-                className="flex-1 bg-[#181B2B] border border-white/10 rounded-full px-5 py-3 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 transition-colors placeholder:text-slate-500"
+                type="file"
+                ref={imageInputRef}
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
               />
 
-              {inputMessage.trim() ? (
-                <button
-                  type="submit"
-                  className={`px-4 py-3 rounded-full ${currentTheme.sendBtn} text-white font-bold text-xs flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all shadow-md shadow-purple-500/25`}
-                >
-                  <span>Send</span>
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5">
+              {/* Photo Preview Card before sending */}
+              {imagePreviewUrl && (
+                <div className="mb-2.5 p-2 sm:p-2.5 rounded-2xl bg-[#161929] border border-purple-500/40 flex items-center justify-between gap-3 shadow-lg animate-slide-up">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-white/10 relative shadow-sm">
+                      <img
+                        src={imagePreviewUrl}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">
+                        {selectedImage?.name || "Photo attachment"}
+                      </p>
+                      <p className="text-[10px] text-purple-300/90 font-medium">
+                        {selectedImage ? `${(selectedImage.size / 1024).toFixed(0)} KB • Add caption & send` : "Ready to send"}
+                      </p>
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={startRecording}
-                    className="w-11 h-11 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500 hover:to-pink-500 border border-purple-500/30 text-purple-300 hover:text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-md shadow-purple-500/20 group"
-                    title="Record Voice Note"
+                    onClick={handleCancelImage}
+                    className="w-7 h-7 rounded-full bg-white/10 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 flex items-center justify-center transition-colors flex-shrink-0"
+                    title="Remove photo"
                   >
-                    <Mic className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => sendQuickText("❤️")}
-                    className="w-11 h-11 rounded-full bg-white/5 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-                    title="Send Heart"
-                  >
-                    <Heart className="w-5 h-5 fill-rose-500" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
-            </form>
+
+              <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
+                {/* Photo Attachment Button */}
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="w-10 h-10 rounded-full bg-[#181B2B] hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-slate-300 hover:text-purple-300 flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                  title="Send Photo"
+                >
+                  <ImageIcon className="w-4 h-4 text-purple-400" />
+                </button>
+
+                <input
+                  ref={messageInputRef}
+                  type="text"
+                  placeholder={
+                    selectedImage
+                      ? "Add a caption..."
+                      : replyingTo
+                      ? `Replying to ${replyingTo.senderName}...`
+                      : "Message..."
+                  }
+                  value={inputMessage}
+                  onChange={handleInputChange}
+                  className="flex-1 bg-[#181B2B] border border-white/10 rounded-full px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 transition-colors placeholder:text-slate-500"
+                />
+
+                {inputMessage.trim() || selectedImage ? (
+                  <button
+                    type="submit"
+                    disabled={uploadingImage}
+                    className={`px-4 py-2.5 sm:py-3 rounded-full ${currentTheme.sendBtn} text-white font-bold text-xs flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all shadow-md shadow-purple-500/25 disabled:opacity-50`}
+                  >
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span className="hidden sm:inline">Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Send</span>
+                        <Send className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 sm:gap-1.5">
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500 hover:to-pink-500 border border-purple-500/30 text-purple-300 hover:text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-md shadow-purple-500/20 group flex-shrink-0"
+                      title="Record Voice Note"
+                    >
+                      <Mic className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => sendQuickText("❤️")}
+                      className="w-10 h-10 rounded-full bg-white/5 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition-all hover:scale-110 active:scale-95 flex-shrink-0"
+                      title="Send Heart"
+                    >
+                      <Heart className="w-4 h-4 fill-rose-500" />
+                    </button>
+                  </div>
+                )}
+              </form>
+            </>
           )}
         </div>
       </footer>
@@ -2307,6 +2712,61 @@ const Chat = () => {
             >
               <span>Keep Chatting to Boost Vibe ✨</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Photo Lightbox Modal */}
+      {viewingPhotoUrl && (
+        <div
+          onClick={() => setViewingPhotoUrl(null)}
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-between p-3 sm:p-5 animate-fade-in select-none"
+        >
+          {/* Top Header bar with controls */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-5xl flex items-center justify-between text-white py-2 px-3 sm:px-4 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 z-10"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-300">Photo Preview</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={viewingPhotoUrl}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-xs flex items-center gap-1.5 transition-colors"
+                title="Download or open original"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Open Original</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setViewingPhotoUrl(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-rose-500/30 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Image with Smooth Zoom */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 flex items-center justify-center p-2 sm:p-6 w-full max-w-5xl overflow-hidden"
+          >
+            <img
+              src={viewingPhotoUrl}
+              alt="Full Resolution View"
+              className="max-h-[82vh] max-w-full object-contain rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] ring-1 ring-white/10 transition-all duration-300 animate-slide-up"
+            />
+          </div>
+
+          <div className="text-[11px] text-slate-400 py-1">
+            Tap anywhere outside or press Esc to close
           </div>
         </div>
       )}

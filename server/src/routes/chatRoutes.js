@@ -50,10 +50,33 @@ chatRouter.get("/chat/:targetUserId", auth, async (req, res) => {
     // Find chat conversation
     let chat = await Chat.findOne({
       participants: { $all: [loggedInUserId, targetUserId] },
-    }).populate({
-      path: "messages.senderId",
-      select: "firstName lastName photoUrl",
     });
+
+    if (chat && chat.messages && chat.messages.length > 0) {
+      let hasUnread = false;
+      chat.messages.forEach((msg) => {
+        const senderStr = (typeof msg.senderId === "object" ? msg.senderId?._id : msg.senderId)?.toString();
+        if (senderStr === targetUserId.toString() && !msg.isRead) {
+          msg.isRead = true;
+          hasUnread = true;
+        }
+      });
+      if (hasUnread) {
+        await chat.save();
+        const roomId = [loggedInUserId.toString(), targetUserId.toString()].sort().join("_");
+        const io = req.app.get("io");
+        if (io) {
+          io.to(roomId).emit("messagesMarkedRead", { readerId: loggedInUserId.toString() });
+        }
+      }
+    }
+
+    if (chat) {
+      await chat.populate({
+        path: "messages.senderId",
+        select: "firstName lastName photoUrl",
+      });
+    }
 
     res.status(200).json({
       messages: chat ? chat.messages : [],

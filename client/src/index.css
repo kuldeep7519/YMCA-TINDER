@@ -97,3 +97,12 @@
 .animate-float-reverse {
   animation: floatReverse 7s ease-in-out infinite;
 }
+
+@keyframes toastProgress {
+  0% {
+    width: 100%;
+  }
+  100% {
+    width: 0%;
+  }
+}
