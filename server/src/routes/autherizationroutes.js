@@ -14,6 +14,39 @@ const getCookieOptions = () => ({
   maxAge: 7 * 24 * 60 * 60 * 1000,
 });
 
+// Canonical Email Normalization:
+// 1. Blocks email aliases & plus-tags (e.g. user+tag@gmail.com)
+// 2. Normalizes Gmail usernames by removing all dots (e.g. john.doe -> johndoe)
+// Ensures 1 Gmail address = strictly 1 user account across YMCA Match
+export const normalizeStudentEmail = (rawEmail) => {
+  if (!rawEmail || typeof rawEmail !== "string" || !rawEmail.trim()) {
+    throw new Error("Student email is required");
+  }
+
+  const trimmed = rawEmail.toLowerCase().trim();
+
+  // Strictly block plus-tags / aliases (+tag)
+  if (trimmed.includes("+")) {
+    throw new Error("Email aliases and plus-tags (+tag) are strictly blocked on YMCA Match. Please use your standard email.");
+  }
+
+  // Validate allowed domain (@gmail.com or @jcboseust.ac.in)
+  const isAllowedEmail = /^[a-zA-Z0-9._%-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(trimmed);
+  if (!isAllowedEmail) {
+    throw new Error("Only genuine @gmail.com email addresses are allowed. Temporary, disposable, and fake emails are strictly blocked!");
+  }
+
+  const [username, domain] = trimmed.split("@");
+
+  // For Gmail, remove all dots from the username so 'first.last@gmail.com' and 'firstlast@gmail.com' are identical
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    const cleanUsername = username.replace(/\./g, "");
+    return `${cleanUsername}@gmail.com`;
+  }
+
+  return `${username}@${domain}`;
+};
+
 // 1. Send 6-digit Verification OTP to Student Email
 authRouter.post("/send-otp", async (req, res) => {
   try {
@@ -22,18 +55,12 @@ authRouter.post("/send-otp", async (req, res) => {
       return res.status(400).json({ message: "Student email is required" });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizeStudentEmail(email);
 
-    // Block fake/temp emails - strictly allow @gmail.com (and official @jcboseust.ac.in)
-    const isAllowedEmail = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
-    if (!isAllowedEmail) {
-      return res.status(400).json({
-        message: "Only genuine @gmail.com email addresses are allowed. Temporary, disposable, and fake emails are strictly blocked!",
-      });
-    }
-
-    // Check if account already exists
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    // Check if account already exists (matches canonical or pre-existing format)
+    const existingUser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (existingUser) {
       return res.status(400).json({
         message: "An account with this email already exists. Please log in.",
@@ -41,7 +68,9 @@ authRouter.post("/send-otp", async (req, res) => {
     }
 
     // 60-second cooldown check to prevent spamming and SMTP exhaustion
-    const existingOtp = await OTP.findOne({ email: normalizedEmail });
+    const existingOtp = await OTP.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (existingOtp && existingOtp.createdAt) {
       const elapsedSeconds = Math.floor((Date.now() - new Date(existingOtp.createdAt).getTime()) / 1000);
       if (elapsedSeconds < 60) {
@@ -61,9 +90,9 @@ authRouter.post("/send-otp", async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Send email via Nodemailer (or fallback to server console if SMTP pending)
+    // Send email via Nodemailer (send to the student's entered address)
     const mailResult = await sendVerificationEmail({
-      toEmail: normalizedEmail,
+      toEmail: email.trim(),
       studentName: firstName,
       otp,
     });
@@ -80,7 +109,7 @@ authRouter.post("/send-otp", async (req, res) => {
       message: "6-digit verification code sent to your email!",
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to send code: " + err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -92,8 +121,10 @@ authRouter.post("/verify-otp", async (req, res) => {
       return res.status(400).json({ message: "Email and verification code are required" });
     }
 
+    const normalizedEmail = normalizeStudentEmail(email);
+
     const record = await OTP.findOne({
-      email: email.toLowerCase().trim(),
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
       otp: otp.toString().trim(),
     });
 
@@ -109,7 +140,7 @@ authRouter.post("/verify-otp", async (req, res) => {
       message: "Email verified successfully!",
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -137,16 +168,12 @@ authRouter.post("/signup", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizeStudentEmail(email);
 
-    const isAllowedEmail = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
-    if (!isAllowedEmail) {
-      return res.status(400).json({
-        message: "Only genuine @gmail.com email addresses are allowed. Temporary, disposable, and fake emails are strictly blocked!",
-      });
-    }
-
-    const existinguser = await User.findOne({ email: normalizedEmail });
+    // Prevent duplicate accounts: check both canonical and legacy email formats
+    const existinguser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (existinguser) {
       return res.status(400).json({
         message: "An account with this email already exists",
@@ -156,7 +183,7 @@ authRouter.post("/signup", async (req, res) => {
     // Verify OTP if provided
     if (otp) {
       const validOtp = await OTP.findOne({
-        email: normalizedEmail,
+        $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
         otp: otp.toString().trim(),
       });
 
@@ -167,7 +194,9 @@ authRouter.post("/signup", async (req, res) => {
       }
 
       // Delete used OTP
-      await OTP.deleteMany({ email: normalizedEmail });
+      await OTP.deleteMany({
+        $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+      });
     }
 
     const hashpassword = await bcrypt.hash(password, 10);
@@ -179,7 +208,7 @@ authRouter.post("/signup", async (req, res) => {
       gender,
       branch,
       interest: interest || [],
-      email: normalizedEmail,
+      email: normalizedEmail, // saved as canonical normalized email
       year,
       password: hashpassword,
       bio: bio || "Hey there! I am using YMCA Match.",
@@ -225,16 +254,16 @@ authRouter.post("/signup", async (req, res) => {
 authRouter.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const isAllowedEmail = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
-    if (!isAllowedEmail) {
-      return res.status(400).json({
-        message: "Only genuine @gmail.com email addresses are allowed. Temporary, disposable, and fake emails are strictly blocked!",
-      });
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const existinguser = await User.findOne({ email: normalizedEmail });
+    const normalizedEmail = normalizeStudentEmail(email);
+
+    // Support both canonical and legacy email formats
+    const existinguser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (!existinguser) {
       return res.status(400).json({
         message: "No account found with this email. Please check your spelling or sign up.",
@@ -299,18 +328,12 @@ authRouter.post("/forgot-password/send-otp", async (req, res) => {
       return res.status(400).json({ message: "Student email is required" });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Check allowed domains
-    const isAllowedEmail = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
-    if (!isAllowedEmail) {
-      return res.status(400).json({
-        message: "Only genuine @gmail.com email addresses are allowed.",
-      });
-    }
+    const normalizedEmail = normalizeStudentEmail(email);
 
     // Check if account exists
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    const existingUser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (!existingUser) {
       return res.status(404).json({
         message: "No registered account found with this email. Please check spelling or create a new account.",
@@ -318,7 +341,9 @@ authRouter.post("/forgot-password/send-otp", async (req, res) => {
     }
 
     // 60-second cooldown check
-    const existingOtp = await OTP.findOne({ email: normalizedEmail });
+    const existingOtp = await OTP.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (existingOtp && existingOtp.createdAt) {
       const elapsedSeconds = Math.floor((Date.now() - new Date(existingOtp.createdAt).getTime()) / 1000);
       if (elapsedSeconds < 60) {
@@ -340,7 +365,7 @@ authRouter.post("/forgot-password/send-otp", async (req, res) => {
 
     // Send password reset email
     const mailResult = await sendVerificationEmail({
-      toEmail: normalizedEmail,
+      toEmail: email.trim(),
       studentName: existingUser.firstName,
       otp,
       type: "reset",
@@ -357,7 +382,7 @@ authRouter.post("/forgot-password/send-otp", async (req, res) => {
       message: "Password reset code sent to your email!",
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to send reset code: " + err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -378,11 +403,11 @@ authRouter.post("/forgot-password/reset", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizeStudentEmail(email);
 
     // Verify OTP
     const validOtp = await OTP.findOne({
-      email: normalizedEmail,
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
       otp: otp.toString().trim(),
     });
 
@@ -393,7 +418,9 @@ authRouter.post("/forgot-password/reset", async (req, res) => {
     }
 
     // Find user
-    const user = await User.findOne({ email: normalizedEmail });
+    const user = await User.findOne({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
     if (!user) {
       return res.status(404).json({
         message: "No account found with this email.",
@@ -403,10 +430,13 @@ authRouter.post("/forgot-password/reset", async (req, res) => {
     // Hash and update password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
+    user.email = normalizedEmail; // update to canonical format
     await user.save();
 
     // Delete used OTP
-    await OTP.deleteMany({ email: normalizedEmail });
+    await OTP.deleteMany({
+      $or: [{ email: normalizedEmail }, { email: email.toLowerCase().trim() }],
+    });
 
     // Generate JWT and log user in immediately
     const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {

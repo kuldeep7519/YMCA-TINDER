@@ -20,7 +20,10 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       maxLength: 100,
       validate(value) {
-        if (!/^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(value)) {
+        if (value.includes("+")) {
+          throw new Error("Email aliases and plus-tags (+tag) are strictly blocked on YMCA Match. Please use your standard email.");
+        }
+        if (!/^[a-zA-Z0-9._%-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(value)) {
           throw new Error("Only genuine @gmail.com email addresses are allowed! Disposable or temp-mails are blocked.");
         }
       },

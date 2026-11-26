@@ -261,7 +261,11 @@ const Login = () => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const isAllowedEmail = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
+    if (normalizedEmail.includes("+")) {
+      setError("Email aliases and plus-tags (+tag) are strictly blocked on YMCA Match. Please use your standard email.");
+      return;
+    }
+    const isAllowedEmail = /^[a-zA-Z0-9._%-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalizedEmail);
     if (!isAllowedEmail) {
       setError("Only genuine @gmail.com email addresses are allowed. Temporary, disposable, and fake emails are blocked!");
       return;
@@ -456,7 +460,11 @@ const Login = () => {
     }
 
     const normalized = forgotEmail.toLowerCase().trim();
-    const isAllowed = /^[a-zA-Z0-9._%+-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalized);
+    if (normalized.includes("+")) {
+      setError("Email aliases and plus-tags (+tag) are strictly blocked. Please use your standard email.");
+      return;
+    }
+    const isAllowed = /^[a-zA-Z0-9._%-]+@(?:gmail\.com|jcboseust\.ac\.in)$/i.test(normalized);
     if (!isAllowed) {
       setError("Only genuine @gmail.com email addresses are allowed.");
       return;
