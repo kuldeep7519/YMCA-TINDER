@@ -6,19 +6,24 @@ import fs from "fs";
 // Configure Multer to store incoming file in memory buffer
 const storage = multer.memoryStorage();
 
-// Accept only image formats & max 10MB
+// Accept image formats (including mobile camera, HEIC, WEBP, PNG, JPG) & max 25MB
 export const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit for high-res mobile photos
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|webp|gif/;
-    const mimetype = filetypes.test(file.mimetype);
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-    if (mimetype && extname) {
+    // If browser supplies image mimetype, accept it immediately
+    if (file.mimetype && file.mimetype.toLowerCase().startsWith("image/")) {
       return cb(null, true);
     }
-    cb(new Error("Only image files (jpeg, jpg, png, webp, gif) are allowed!"));
+
+    const filetypes = /jpeg|jpg|png|webp|gif|heic|heif|bmp/i;
+    const extname = path.extname(file.originalname || "").toLowerCase();
+
+    if (filetypes.test(extname) || filetypes.test(file.mimetype || "")) {
+      return cb(null, true);
+    }
+
+    cb(new Error("Only image files (JPEG, JPG, PNG, WEBP, HEIC, GIF) are allowed!"));
   },
 });
 

@@ -1,8 +1,26 @@
 import express from "express";
+import multer from "multer";
 import auth from "../middleware/auth.js";
 import { upload, uploadToCloudOrLocal, uploadChatImage } from "../utils/uploader.js";
 
 const uploadRouter = express.Router();
+
+// Safe wrapper around multer to intercept MulterErrors and invalid formats gracefully
+const safeUploadSingle = (fieldName) => (req, res, next) => {
+  const uploadMiddleware = upload.single(fieldName);
+  uploadMiddleware(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ message: "Photo file exceeds maximum size limit (25MB)." });
+        }
+        return res.status(400).json({ message: `Upload error: ${err.message}` });
+      }
+      return res.status(400).json({ message: err.message || "Failed to process photo file" });
+    }
+    next();
+  });
+};
 
 // 1. Generic photo upload (Used during student signup/registration)
 uploadRouter.post("/upload", upload.single("photo"), async (req, res) => {
@@ -63,7 +81,7 @@ uploadRouter.post(
 uploadRouter.post(
   "/upload/chat-image",
   auth,
-  upload.single("image"),
+  safeUploadSingle("image"),
   async (req, res) => {
     try {
       if (!req.file) {
@@ -82,6 +100,7 @@ uploadRouter.post(
         imageUrl,
       });
     } catch (err) {
+      console.error("Chat image processing error:", err);
       res.status(500).json({ message: "Image upload failed: " + err.message });
     }
   }

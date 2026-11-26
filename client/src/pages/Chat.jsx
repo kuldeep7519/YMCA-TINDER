@@ -885,19 +885,79 @@ const Chat = () => {
     }, 1500);
   };
 
-  // Image attachment handlers
+  // Automatically compress mobile camera & high-res photos before uploading (WhatsApp/Instagram standard)
+  const compressImageForChat = (file, maxWidth = 1600, quality = 0.82) => {
+    return new Promise((resolve) => {
+      // If GIF (preserve animation) or already under 250KB, no compression needed
+      if (file.type === "image/gif" || (file.size && file.size < 250 * 1024)) {
+        return resolve(file);
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          // Downscale proportionally if larger than maxWidth
+          if (width > maxWidth || height > maxWidth) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxWidth) / height);
+              height = maxWidth;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                return resolve(file);
+              }
+              const cleanName = (file.name || "chat-photo.jpg").replace(/\.[^/.]+$/, "") + ".jpg";
+              const compressedFile = new File([blob], cleanName, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
+
+  // Image attachment handlers with mobile/iPhone support
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setToastMessage("Please select an image file (JPEG, PNG, WEBP, GIF)");
+    const isImage =
+      (file.type && file.type.toLowerCase().startsWith("image/")) ||
+      /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name || "");
+
+    if (!isImage) {
+      setToastMessage("Please select an image file (JPEG, PNG, WEBP, GIF, HEIC)");
       setTimeout(() => setToastMessage(null), 3000);
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setToastMessage("Image size cannot exceed 10MB");
+    if (file.size > 25 * 1024 * 1024) {
+      setToastMessage("Image size cannot exceed 25MB");
       setTimeout(() => setToastMessage(null), 3000);
       return;
     }
@@ -947,8 +1007,11 @@ const Chat = () => {
       setReplyingTo(null);
 
       try {
+        // Automatically optimize/compress mobile camera photos (e.g. 10MB down to ~300KB)
+        const fileToUpload = await compressImageForChat(imageFile);
+
         const formData = new FormData();
-        formData.append("image", imageFile);
+        formData.append("image", fileToUpload);
 
         const res = await axiosClient.post("/upload/chat-image", formData, {
           headers: {
@@ -981,8 +1044,9 @@ const Chat = () => {
         setTimeout(() => scrollToBottom("smooth"), 100);
       } catch (err) {
         console.error("Chat image upload failed:", err);
-        setToastMessage("Failed to send photo. Please try again.");
-        setTimeout(() => setToastMessage(null), 3500);
+        const serverError = err.response?.data?.message || err.message || "Failed to send photo. Please try again.";
+        setToastMessage(`Failed to send photo: ${serverError}`);
+        setTimeout(() => setToastMessage(null), 4000);
       } finally {
         setSendingMessage(false);
         setUploadingImage(false);
