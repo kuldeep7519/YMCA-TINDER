@@ -71,7 +71,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (
       loggedInUser?.role === "admin" ||
-      loggedInUser?.email === "kuldeeprao9812@gmail.com"
+      loggedInUser?.email === "kuldeeprao9812@gmail.com" ||
+      loggedInUser?.email === "1kuldeeprao9812@gmail.com"
     ) {
       setIsAuthenticated(true);
       return;
@@ -259,7 +260,37 @@ const AdminDashboard = () => {
   };
 
   // ==========================================================
-  // VIEW: AUTHENTICATION LOCK SCREEN
+  // VIEW: 404 FOR UNAUTHORIZED VISITORS (Stealth Mode)
+  // If user is not logged in as Kuldeep/Admin, hide admin portal completely
+  // ==========================================================
+  const isFounderOrAdmin =
+    loggedInUser?.email === "kuldeeprao9812@gmail.com" ||
+    loggedInUser?.email === "1kuldeeprao9812@gmail.com" ||
+    loggedInUser?.role === "admin";
+
+  if (!loggedInUser || !isFounderOrAdmin) {
+    return (
+      <div className="min-h-screen bg-[#07080E] flex flex-col items-center justify-center p-4 text-white text-center">
+        <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-rose-500" />
+        </div>
+        <h1 className="text-2xl font-black mb-2">404 - Page Not Found</h1>
+        <p className="text-slate-400 text-sm max-w-sm mb-6">
+          The requested route was not found or you do not have permission to view this page.
+        </p>
+        <Link
+          to="/feed"
+          className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-sm shadow-lg shadow-purple-500/20 hover:opacity-90 transition-all inline-flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Return to Feed</span>
+        </Link>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // VIEW: AUTHENTICATION LOCK SCREEN (Only for Founder/Admin)
   // ==========================================================
   if (!isAuthenticated) {
     return (

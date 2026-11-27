@@ -7,8 +7,8 @@ import Chat from "../models/chatModel.js";
 
 const adminRouter = express.Router();
 
-// POST /admin/verify-passcode - Verify master admin passcode
-adminRouter.post("/admin/verify-passcode", (req, res) => {
+// POST /admin/verify-passcode - Verify master admin passcode (Requires verified admin session)
+adminRouter.post("/admin/verify-passcode", adminAuth, (req, res) => {
   const { passcode } = req.body;
   const realPasscode = process.env.ADMIN_PASSCODE || "Kuldeep@YMCA#2026!Admin";
   if (passcode && passcode.trim() === realPasscode) {
@@ -111,6 +111,16 @@ adminRouter.post("/admin/user/:userId/ban", adminAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const protectedEmails = [
+      "kuldeeprao9812@gmail.com",
+      "1kuldeeprao9812@gmail.com",
+    ];
+
+    // Protection: Never allow banning an admin or founder account
+    if (isBanned && (user.role === "admin" || protectedEmails.includes(user.email))) {
+      return res.status(403).json({ message: "Protected account: Administrator profiles cannot be suspended." });
+    }
+
     user.isBanned = Boolean(isBanned);
     user.banReason = isBanned ? (banReason || "Violating campus safety guidelines") : "";
     await user.save();
@@ -151,8 +161,13 @@ adminRouter.delete("/admin/user/:userId", adminAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const protectedEmails = [
+      "kuldeeprao9812@gmail.com",
+      "1kuldeeprao9812@gmail.com",
+    ];
+
     // Protection: Never allow deleting an admin or founder account
-    if (user.role === "admin" || user.email === "kuldeeprao9812@gmail.com") {
+    if (user.role === "admin" || protectedEmails.includes(user.email)) {
       return res.status(403).json({ message: "Protected account: Administrator profiles cannot be deleted." });
     }
 
